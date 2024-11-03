@@ -12,18 +12,26 @@ import (
 	"unsafe"
 )
 
+type PrintTypes string
+
+const (
+	PrintTypesDefault PrintTypes = "default"
+	PrintTypesAlways  PrintTypes = "always"
+	PrintTypesNever   PrintTypes = "never"
+)
+
 const (
 	uintptrSize = unsafe.Sizeof(uintptr(0))
 )
 
 var (
 	DefaultIndent = "  "
-	LinePrefix    = ""
 )
 
 type Printer struct {
 	Indent     string
 	LinePrefix string
+	PrintTypes PrintTypes
 
 	level int
 
@@ -52,6 +60,10 @@ func (p *Printer) init() {
 		p.Indent = DefaultIndent
 	}
 
+	if p.PrintTypes == "" {
+		p.PrintTypes = PrintTypesDefault
+	}
+
 	p.buf.Reset()
 }
 
@@ -71,27 +83,27 @@ func (p *Printer) printValue(value any) {
 
 	switch v.Kind() {
 	case reflect.Bool:
-		p.printBooleanValue(v.Bool())
+		p.printBooleanValue(v)
 	case reflect.Int:
-		p.printIntegerValue(v.Int())
+		fallthrough
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		p.printIntegerValue(v.Int())
+		p.printIntegerValue(v)
 	case reflect.Uint:
-		p.printUnsignedIntegerValue(v.Uint())
+		fallthrough
 	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		p.printUnsignedIntegerValue(v.Uint())
+		p.printUnsignedIntegerValue(v)
 	case reflect.Uintptr:
 		p.printPointerAddressValue(uintptr(v.Uint()))
 	case reflect.Float32:
-		p.printFloatValue(v.Float(), 32)
+		p.printFloatValue(v, 32)
 	case reflect.Float64:
-		p.printFloatValue(v.Float(), 64)
+		p.printFloatValue(v, 64)
 	case reflect.Complex64:
-		p.printComplexValue(v.Complex(), 64)
+		p.printComplexValue(v, 64)
 	case reflect.Complex128:
-		p.printComplexValue(v.Complex(), 128)
+		p.printComplexValue(v, 128)
 	case reflect.String:
-		p.printStringValue(v.String())
+		p.printStringValue(v)
 	case reflect.Array, reflect.Slice:
 		p.printSequenceValue(v)
 	case reflect.Map:
@@ -141,32 +153,77 @@ func (p *Printer) printFormat(f string, args ...any) {
 	fmt.Fprintf(&p.buf, f, args...)
 }
 
-func (p *Printer) printBooleanValue(b bool) {
-	if b {
+func (p *Printer) printBooleanValue(v reflect.Value) {
+	if p.PrintTypes == PrintTypesAlways {
+		p.printString(v.Type().String())
+		p.printByte('(')
+	}
+
+	if b := v.Bool(); b {
 		p.printString("true")
 	} else {
 		p.printString("false")
 	}
+
+	if p.PrintTypes == PrintTypesAlways {
+		p.printByte(')')
+	}
 }
 
-func (p *Printer) printIntegerValue(i int64) {
+func (p *Printer) printIntegerValue(v reflect.Value) {
+	if p.PrintTypes == PrintTypesAlways {
+		p.printString(v.Type().String())
+		p.printByte('(')
+	}
+
+	i := v.Int()
 	s := strconv.FormatInt(i, 10)
 	p.printString(s)
+
+	if p.PrintTypes == PrintTypesAlways {
+		p.printByte(')')
+	}
 }
 
-func (p *Printer) printUnsignedIntegerValue(u uint64) {
+func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
+	if p.PrintTypes == PrintTypesAlways {
+		p.printString(v.Type().String())
+		p.printByte('(')
+	}
+
+	u := v.Uint()
 	s := strconv.FormatUint(u, 10)
 	p.printString(s)
+
+	if p.PrintTypes == PrintTypesAlways {
+		p.printByte(')')
+	}
 }
 
-func (p *Printer) printFloatValue(f float64, bitSize int) {
+func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
+	if p.PrintTypes == PrintTypesAlways {
+		p.printString(v.Type().String())
+		p.printByte('(')
+	}
+
+	f := v.Float()
 	s := strconv.FormatFloat(f, 'f', -1, bitSize)
 	p.printString(s)
+
+	if p.PrintTypes == PrintTypesAlways {
+		p.printByte(')')
+	}
 }
 
-func (p *Printer) printComplexValue(c complex128, bitSize int) {
-	// complex64 uses float32 internally, complex128 uses float64
-	bitSize /= 2
+func (p *Printer) printComplexValue(v reflect.Value, bitSize int) {
+	if p.PrintTypes == PrintTypesAlways {
+		p.printString(v.Type().String())
+		p.printByte('(')
+	}
+
+	c := v.Complex()
+
+	bitSize /= 2 // complex64 uses float32 internally, complex128 uses float64
 
 	rs := strconv.FormatFloat(real(c), 'f', -1, bitSize)
 	p.printString(rs)
@@ -177,19 +234,44 @@ func (p *Printer) printComplexValue(c complex128, bitSize int) {
 	}
 	p.printString(is)
 	p.printByte('i')
+
+	if p.PrintTypes == PrintTypesAlways {
+		p.printByte(')')
+	}
 }
 
-func (p *Printer) printStringValue(s string) {
+func (p *Printer) printStringValue(v reflect.Value) {
+	if p.PrintTypes == PrintTypesAlways {
+		p.printString(v.Type().String())
+		p.printByte('(')
+	}
+
+	s := v.String()
 	buf := strconv.AppendQuote([]byte{}, s)
 	p.printBytes(buf)
+
+	if p.PrintTypes == PrintTypesAlways {
+		p.printByte(')')
+	}
 }
 
 func (p *Printer) printSequenceValue(v reflect.Value) {
 	if v.Kind() == reflect.Slice && v.IsNil() {
-		p.printString(v.Type().String())
-		p.printString("(nil)")
+		if p.PrintTypes != PrintTypesNever {
+			p.printString(v.Type().String())
+			p.printByte('(')
+		}
+
+		p.printString("nil")
+
+		if p.PrintTypes != PrintTypesNever {
+			p.printByte(')')
+		}
 	} else {
-		p.printString(v.Type().String())
+		if p.PrintTypes != PrintTypesNever {
+			p.printString(v.Type().String())
+		}
+
 		p.printByte('[')
 		p.printNewline()
 		p.level++
@@ -211,18 +293,32 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 
 func (p *Printer) printMapValue(v reflect.Value) {
 	if v.IsNil() {
-		p.printString(v.Type().String())
-		p.printString("(nil)")
+		if p.PrintTypes != PrintTypesNever {
+			p.printString(v.Type().String())
+			p.printByte('(')
+		}
+
+		p.printString("nil")
+
+		if p.PrintTypes != PrintTypesNever {
+			p.printByte(')')
+		}
 	} else {
 		keys := v.MapKeys()
 
 		if len(keys) == 0 {
-			p.printString(v.Type().String())
+			if p.PrintTypes != PrintTypesNever {
+				p.printString(v.Type().String())
+			}
+
 			p.printString("{}")
 		} else {
 			slices.SortFunc(keys, p.compareMapKeys)
 
-			p.printString(v.Type().String())
+			if p.PrintTypes != PrintTypesNever {
+				p.printString(v.Type().String())
+			}
+
 			p.printByte('{')
 			p.printNewline()
 			p.level++
@@ -324,7 +420,10 @@ func (p *Printer) compareMapKeys(v1, v2 reflect.Value) int {
 
 func (p *Printer) printStructValue(v reflect.Value) {
 	vt := v.Type()
-	p.printString(vt.String())
+
+	if p.PrintTypes != PrintTypesNever {
+		p.printString(vt.String())
+	}
 
 	if vt.NumField() == 0 {
 		p.printString("{}")
@@ -352,29 +451,49 @@ func (p *Printer) printStructValue(v reflect.Value) {
 }
 
 func (p *Printer) printChannelValue(v reflect.Value) {
-	p.printByte('(')
-	p.printString(v.Type().String())
-	p.printByte(')')
+	if p.PrintTypes != PrintTypesNever {
+		p.printByte('(')
+		p.printString(v.Type().String())
+		p.printByte(')')
 
-	p.printByte('(')
+		p.printByte('(')
+	}
+
 	p.printPointerAddressValue(uintptr(v.Pointer()))
-	p.printByte(')')
+
+	if p.PrintTypes != PrintTypesNever {
+		p.printByte(')')
+	}
 }
 
 func (p *Printer) printFunctionValue(v reflect.Value) {
-	p.printByte('(')
-	p.printString(v.Type().String())
-	p.printByte(')')
+	if p.PrintTypes != PrintTypesNever {
+		p.printByte('(')
+		p.printString(v.Type().String())
+		p.printByte(')')
 
-	p.printByte('(')
+		p.printByte('(')
+	}
+
 	p.printPointerAddressValue(uintptr(v.Pointer()))
-	p.printByte(')')
+
+	if p.PrintTypes != PrintTypesNever {
+		p.printByte(')')
+	}
 }
 
 func (p *Printer) printInterfaceValue(v reflect.Value) {
 	if v.IsZero() {
-		p.printString(v.Type().String())
-		p.printString("(nil)")
+		if p.PrintTypes != PrintTypesNever {
+			p.printString(v.Type().String())
+			p.printByte('(')
+		}
+
+		p.printString("nil")
+
+		if p.PrintTypes != PrintTypesNever {
+			p.printByte(')')
+		}
 	} else {
 		p.printValue(v.Elem())
 	}
@@ -382,10 +501,20 @@ func (p *Printer) printInterfaceValue(v reflect.Value) {
 
 func (p *Printer) printPointerValue(v reflect.Value) {
 	if v.IsZero() {
-		p.printString(v.Type().String())
-		p.printString("(nil)")
+		if p.PrintTypes != PrintTypesNever {
+			p.printString(v.Type().String())
+			p.printByte('(')
+		}
+
+		p.printString("nil")
+
+		if p.PrintTypes != PrintTypesNever {
+			p.printByte(')')
+		}
 	} else {
-		p.printByte('&')
+		if p.PrintTypes != PrintTypesNever {
+			p.printByte('&')
+		}
 		p.printValue(v.Elem())
 	}
 }
