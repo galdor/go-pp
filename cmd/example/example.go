@@ -1,5 +1,11 @@
 package main
 
+import (
+	"net/http"
+
+	"github.com/galdor/go-pp"
+)
+
 func main() {
-	// TODO
+	pp.Print(http.DefaultServeMux)
 }
