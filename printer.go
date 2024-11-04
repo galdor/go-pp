@@ -35,7 +35,16 @@ type Printer struct {
 
 	level int
 
-	buf bytes.Buffer
+	cyclic   bool
+	pointers map[uintptr]*pointerRef
+
+	buf []byte
+}
+
+type pointerRef struct {
+	n         int
+	idx       int
+	annotated bool
 }
 
 func (p *Printer) Print(value any) error {
@@ -43,19 +52,19 @@ func (p *Printer) Print(value any) error {
 }
 
 func (p *Printer) PrintTo(value any, w io.Writer) error {
-	p.init()
+	p.reset()
 	p.printValueLine(value)
-	_, err := io.Copy(w, &p.buf)
+	_, err := w.Write(p.buf)
 	return err
 }
 
 func (p *Printer) String(value any) string {
-	p.init()
+	p.reset()
 	p.printValueLine(value)
-	return p.buf.String()
+	return string(p.buf)
 }
 
-func (p *Printer) init() {
+func (p *Printer) reset() {
 	if p.Indent == "" {
 		p.Indent = DefaultIndent
 	}
@@ -64,7 +73,43 @@ func (p *Printer) init() {
 		p.PrintTypes = PrintTypesDefault
 	}
 
-	p.buf.Reset()
+	p.cyclic = false
+	p.pointers = make(map[uintptr]*pointerRef)
+
+	p.buf = nil
+}
+
+func (p *Printer) storePointer(ptr uintptr) {
+	ref := pointerRef{
+		n:   len(p.pointers) + 1,
+		idx: len(p.buf),
+	}
+
+	p.pointers[ptr] = &ref
+}
+
+func (p *Printer) annotatePointer(ref *pointerRef) {
+	if !ref.annotated {
+		before, after := p.buf[:ref.idx], p.buf[ref.idx:]
+
+		s := fmt.Sprintf("#%d=", ref.n)
+		p.buf = bytes.Join([][]byte{before, after}, []byte(s))
+
+		ref.annotated = true
+	}
+}
+
+func (p *Printer) checkPointer(ptr uintptr) bool {
+	if ref, found := p.pointers[ptr]; found {
+		p.cyclic = true
+		p.annotatePointer(ref)
+
+		p.printFormat("#%d#", ref.n)
+		return false
+	}
+
+	p.storePointer(ptr)
+	return true
 }
 
 func (p *Printer) printValueLine(value any) {
@@ -126,31 +171,31 @@ func (p *Printer) printValue(value any) {
 }
 
 func (p *Printer) printLineStart() {
-	p.buf.WriteString(p.LinePrefix)
+	p.printString(p.LinePrefix)
 
 	for range p.level {
-		p.buf.WriteString(p.Indent)
+		p.printString(p.Indent)
 	}
 }
 
 func (p *Printer) printNewline() {
-	fmt.Fprintln(&p.buf)
+	p.printByte('\n')
 }
 
 func (p *Printer) printByte(c byte) {
-	p.buf.WriteByte(c)
+	p.buf = append(p.buf, c)
 }
 
 func (p *Printer) printBytes(data []byte) {
-	p.buf.Write(data)
+	p.buf = append(p.buf, data...)
 }
 
 func (p *Printer) printString(s string) {
-	p.buf.WriteString(s)
+	p.printBytes([]byte(s))
 }
 
-func (p *Printer) printFormat(f string, args ...any) {
-	fmt.Fprintf(&p.buf, f, args...)
+func (p *Printer) printFormat(format string, args ...any) {
+	p.printString(fmt.Sprintf(format, args...))
 }
 
 func (p *Printer) printBooleanValue(v reflect.Value) {
@@ -268,6 +313,10 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 			p.printByte(')')
 		}
 	} else {
+		if v.Kind() == reflect.Slice && !p.checkPointer(v.Pointer()) {
+			return
+		}
+
 		if p.PrintTypes != PrintTypesNever {
 			p.printString(v.Type().String())
 		}
@@ -304,6 +353,10 @@ func (p *Printer) printMapValue(v reflect.Value) {
 			p.printByte(')')
 		}
 	} else {
+		if !p.checkPointer(v.Pointer()) {
+			return
+		}
+
 		keys := v.MapKeys()
 
 		if len(keys) == 0 {
@@ -459,7 +512,7 @@ func (p *Printer) printChannelValue(v reflect.Value) {
 		p.printByte('(')
 	}
 
-	p.printPointerAddressValue(uintptr(v.Pointer()))
+	p.printPointerAddressValue(v.Pointer())
 
 	if p.PrintTypes != PrintTypesNever {
 		p.printByte(')')
@@ -475,7 +528,7 @@ func (p *Printer) printFunctionValue(v reflect.Value) {
 		p.printByte('(')
 	}
 
-	p.printPointerAddressValue(uintptr(v.Pointer()))
+	p.printPointerAddressValue(v.Pointer())
 
 	if p.PrintTypes != PrintTypesNever {
 		p.printByte(')')
@@ -512,10 +565,13 @@ func (p *Printer) printPointerValue(v reflect.Value) {
 			p.printByte(')')
 		}
 	} else {
-		if p.PrintTypes != PrintTypesNever {
-			p.printByte('&')
+		if p.checkPointer(v.Pointer()) {
+			if p.PrintTypes != PrintTypesNever {
+				p.printByte('&')
+			}
+
+			p.printValue(v.Elem())
 		}
-		p.printValue(v.Elem())
 	}
 }
 
