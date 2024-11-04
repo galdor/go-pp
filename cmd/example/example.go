@@ -1,7 +1,7 @@
 package main
 
 import (
-	"net/http"
+	"time"
 
 	"github.com/galdor/go-pp"
 )
@@ -17,8 +17,7 @@ type Bar struct {
 }
 
 func main() {
-	// Complex data structure
-	pp.Print(http.DefaultServeMux)
+	pp.Print(time.Now())
 
 	// Cyclic pointers
 	foo1 := Foo{}
