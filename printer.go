@@ -216,7 +216,7 @@ func (p *Printer) printFormat(format string, args ...any) {
 
 func (p *Printer) printBooleanValue(v reflect.Value) {
 	if p.PrintTypes == PrintTypesAlways {
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
 
@@ -233,7 +233,7 @@ func (p *Printer) printBooleanValue(v reflect.Value) {
 
 func (p *Printer) printIntegerValue(v reflect.Value) {
 	if p.PrintTypes == PrintTypesAlways {
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
 
@@ -248,7 +248,7 @@ func (p *Printer) printIntegerValue(v reflect.Value) {
 
 func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
 	if p.PrintTypes == PrintTypesAlways {
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
 
@@ -263,7 +263,7 @@ func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
 
 func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
 	if p.PrintTypes == PrintTypesAlways {
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
 
@@ -278,7 +278,7 @@ func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
 
 func (p *Printer) printComplexValue(v reflect.Value, bitSize int) {
 	if p.PrintTypes == PrintTypesAlways {
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
 
@@ -303,7 +303,7 @@ func (p *Printer) printComplexValue(v reflect.Value, bitSize int) {
 
 func (p *Printer) printStringValue(v reflect.Value) {
 	if p.PrintTypes == PrintTypesAlways {
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
 
@@ -319,7 +319,7 @@ func (p *Printer) printStringValue(v reflect.Value) {
 func (p *Printer) printSequenceValue(v reflect.Value) {
 	if v.Kind() == reflect.Slice && v.IsNil() {
 		if p.PrintTypes != PrintTypesNever {
-			p.printString(v.Type().String())
+			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
@@ -334,7 +334,7 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 		}
 
 		if p.PrintTypes != PrintTypesNever {
-			p.printString(v.Type().String())
+			p.printString(p.valueTypeString(v))
 		}
 
 		p.printByte('[')
@@ -359,7 +359,7 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 func (p *Printer) printMapValue(v reflect.Value) {
 	if v.IsNil() {
 		if p.PrintTypes != PrintTypesNever {
-			p.printString(v.Type().String())
+			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
@@ -377,7 +377,7 @@ func (p *Printer) printMapValue(v reflect.Value) {
 
 		if len(keys) == 0 {
 			if p.PrintTypes != PrintTypesNever {
-				p.printString(v.Type().String())
+				p.printString(p.valueTypeString(v))
 			}
 
 			p.printString("{}")
@@ -385,7 +385,7 @@ func (p *Printer) printMapValue(v reflect.Value) {
 			slices.SortFunc(keys, p.compareMapKeys)
 
 			if p.PrintTypes != PrintTypesNever {
-				p.printString(v.Type().String())
+				p.printString(p.valueTypeString(v))
 			}
 
 			p.printByte('{')
@@ -522,7 +522,7 @@ func (p *Printer) printStructValue(v reflect.Value) {
 func (p *Printer) printChannelValue(v reflect.Value) {
 	if p.PrintTypes != PrintTypesNever {
 		p.printByte('(')
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte(')')
 
 		p.printByte('(')
@@ -538,7 +538,7 @@ func (p *Printer) printChannelValue(v reflect.Value) {
 func (p *Printer) printFunctionValue(v reflect.Value) {
 	if p.PrintTypes != PrintTypesNever {
 		p.printByte('(')
-		p.printString(v.Type().String())
+		p.printString(p.valueTypeString(v))
 		p.printByte(')')
 
 		p.printByte('(')
@@ -554,7 +554,7 @@ func (p *Printer) printFunctionValue(v reflect.Value) {
 func (p *Printer) printInterfaceValue(v reflect.Value) {
 	if v.IsZero() {
 		if p.PrintTypes != PrintTypesNever {
-			p.printString(v.Type().String())
+			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
@@ -571,7 +571,7 @@ func (p *Printer) printInterfaceValue(v reflect.Value) {
 func (p *Printer) printPointerValue(v reflect.Value) {
 	if v.IsZero() {
 		if p.PrintTypes != PrintTypesNever {
-			p.printString(v.Type().String())
+			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
@@ -610,4 +610,16 @@ func (p *Printer) printPointerAddressValue(ptr uintptr) {
 
 func (p *Printer) printUnknownValue(v reflect.Value) {
 	p.printFormat("%#v", v)
+}
+
+func (p *Printer) valueTypeString(v reflect.Value) string {
+	s := v.Type().String()
+
+	// It does not seem possible to get the actual interface type behind a
+	// variable. I.e. reflect.TypeOf(any(42)).Kind is reflect.Int, not
+	// reflect.interface. So we do something really ugly. But it works. Blame
+	// Go.
+	s = strings.ReplaceAll(s, "interface {}", "any")
+
+	return s
 }
