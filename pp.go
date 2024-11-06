@@ -6,14 +6,14 @@ import (
 
 var DefaultPrinter Printer
 
-func Print(value any) error {
-	return DefaultPrinter.Print(value)
+func Print(value any, label ...any) error {
+	return DefaultPrinter.Print(value, label...)
 }
 
-func PrintTo(value any, w io.Writer) error {
-	return DefaultPrinter.PrintTo(value, w)
+func PrintTo(w io.Writer, value any, label ...any) error {
+	return DefaultPrinter.PrintTo(w, value)
 }
 
-func String(value any) string {
-	return DefaultPrinter.String(value)
+func String(value any, label ...any) string {
+	return DefaultPrinter.String(value, label...)
 }

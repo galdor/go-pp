@@ -17,7 +17,7 @@ type Bar struct {
 }
 
 func main() {
-	pp.Print(time.Now())
+	pp.Print(time.Now(), "now")
 
 	// Cyclic pointers
 	foo1 := Foo{}

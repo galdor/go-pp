@@ -47,19 +47,21 @@ type pointerRef struct {
 	annotated bool
 }
 
-func (p *Printer) Print(value any) error {
-	return p.PrintTo(value, os.Stdout)
+func (p *Printer) Print(value any, label ...any) error {
+	return p.PrintTo(os.Stdout, value, label...)
 }
 
-func (p *Printer) PrintTo(value any, w io.Writer) error {
+func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
 	p.reset()
+	p.maybePrintLabel(label...)
 	p.printValueLine(value)
 	_, err := w.Write(p.buf)
 	return err
 }
 
-func (p *Printer) String(value any) string {
+func (p *Printer) String(value any, label ...any) string {
 	p.reset()
+	p.maybePrintLabel(label...)
 	p.printValueLine(value)
 	return string(p.buf)
 }
@@ -110,6 +112,20 @@ func (p *Printer) checkPointer(ptr uintptr) bool {
 
 	p.storePointer(ptr)
 	return true
+}
+
+func (p *Printer) maybePrintLabel(label ...any) {
+	if len(label) > 0 {
+		format, ok := label[0].(string)
+		if !ok {
+			panic("label format is not a string")
+		}
+
+		p.printLineStart()
+		p.printFormat(format, label[1:]...)
+		p.printByte(':')
+		p.printNewline()
+	}
 }
 
 func (p *Printer) printValueLine(value any) {
