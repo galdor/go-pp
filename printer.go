@@ -182,7 +182,9 @@ func (p *Printer) reset(value any) {
 
 	p.buf = nil
 
-	p.initPointers(reflect.ValueOf(value))
+	if value != nil {
+		p.initPointers(reflect.ValueOf(value))
+	}
 }
 
 func (p *Printer) initPointers(v reflect.Value) {
@@ -192,6 +194,10 @@ func (p *Printer) initPointers(v reflect.Value) {
 
 	var fn func(reflect.Value)
 	fn = func(v reflect.Value) {
+		if v.IsZero() {
+			return
+		}
+
 		vt := v.Type()
 
 		switch v.Kind() {
@@ -317,7 +323,7 @@ func (p *Printer) printValue(value any) {
 
 	// Formatting function can return values which are themselves formattable.
 	// So we iterate until we get to a value we cannot format.
-	for {
+	for v.Kind() != 0 {
 		if !v.CanInterface() || p.formatValue == nil {
 			break
 		}
@@ -795,7 +801,15 @@ func (p *Printer) printPointerAddressValue(ptr uintptr) {
 }
 
 func (p *Printer) printUnknownValue(v reflect.Value) {
-	p.printFormat("%#v", v)
+	if v.Kind() == 0 {
+		// An unitialized interface value passed to reflect.ValueOf will yield a
+		// value with kind zero that panics if IsZero() is called. None of it
+		// makes any sense but the Go type/value system is fundamentally broken
+		// anyway.
+		p.printFormat("nil")
+	} else {
+		p.printFormat("%#v", v)
+	}
 }
 
 func (p *Printer) printValueString(v reflect.Value, s string) {
@@ -868,7 +882,7 @@ func (p *Printer) addThousandsSeparator(s string) string {
 }
 
 func (p *Printer) inlinableValue(v reflect.Value) bool {
-	if p.atomicValue(v) {
+	if v.Kind() == 0 || p.atomicValue(v) {
 		return true
 	}
 
