@@ -199,14 +199,15 @@ func (p *Printer) initPointers(v reflect.Value) {
 		}
 
 		switch v.Kind() {
-		case reflect.Map, reflect.Slice, reflect.Struct:
+		case reflect.Slice, reflect.Array, reflect.Map, reflect.Struct:
 		case reflect.Pointer, reflect.Interface:
 
 		default:
 			return
 		}
 
-		if v.Kind() != reflect.Struct && v.Kind() != reflect.Interface {
+		switch v.Kind() {
+		case reflect.Slice, reflect.Map, reflect.Pointer:
 			if v.IsNil() {
 				return
 			}
@@ -222,15 +223,16 @@ func (p *Printer) initPointers(v reflect.Value) {
 		}
 
 		switch v.Kind() {
+		case reflect.Slice, reflect.Array:
+			for i := range v.Len() {
+				fn(v.Index(i))
+			}
+
 		case reflect.Map:
 			iter := v.MapRange()
 			for iter.Next() {
+				fn(iter.Key())
 				fn(iter.Value())
-			}
-
-		case reflect.Slice:
-			for i := range v.Len() {
-				fn(v.Index(i))
 			}
 
 		case reflect.Struct:
