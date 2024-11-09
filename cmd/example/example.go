@@ -49,6 +49,8 @@ func printTitle(s string) {
 }
 
 func main() {
+	pp.DefaultPrinter.SetLinePrefix("> ")
+
 	// Standard types
 	printTitle("STANDARD TYPES")
 
@@ -86,5 +88,5 @@ func main() {
 			{26602, 31921, 19128},
 			{23902, 3278, 2333527093},
 		},
-	})
+	}, "complex value")
 }

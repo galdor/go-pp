@@ -1,6 +1,7 @@
 package pp
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -110,22 +111,15 @@ func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
 	defer p.mu.Unlock()
 
 	p.reset(value)
-	p.maybePrintLabel(label...)
-	p.printValueLine(value)
+	p.printValue(value)
 
-	_, err := w.Write(p.buf)
+	var buf bytes.Buffer
+	buf.WriteString(p.formatHeader(label...))
+	buf.Write(p.buf)
+	buf.WriteByte('\n')
+
+	_, err := io.Copy(w, &buf)
 	return err
-}
-
-func (p *Printer) String(value any, label ...any) string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	p.reset(value)
-	p.maybePrintLabel(label...)
-	p.printValueLine(value)
-
-	return string(p.buf)
 }
 
 func (p *Printer) clone() *Printer {
@@ -253,17 +247,22 @@ func (p *Printer) currentMaxInlineColumn() int {
 	return p.maxInlineColumn - len(p.linePrefix) - p.level*len(p.indent)
 }
 
-func (p *Printer) maybePrintLabel(label ...any) {
-	if len(label) > 0 {
-		format, ok := label[0].(string)
-		if !ok {
-			panic("label format is not a string")
-		}
+func (p *Printer) formatHeader(label ...any) string {
+	if len(label) == 0 {
+		return p.linePrefix
+	}
 
-		p.printLineStart()
-		p.printFormat(format, label[1:]...)
-		p.printByte(':')
-		p.printNewline()
+	format, ok := label[0].(string)
+	if !ok {
+		panic("label format is not a string")
+	}
+
+	labelString := fmt.Sprintf("["+format+"]", label[1:]...)
+
+	if eol := bytes.IndexByte(p.buf, '\n'); eol >= 0 && eol < len(p.buf)-1 {
+		return p.linePrefix + labelString + "\n" + p.linePrefix
+	} else {
+		return p.linePrefix + labelString + " "
 	}
 }
 

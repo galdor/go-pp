@@ -13,7 +13,3 @@ func Print(value any, label ...any) error {
 func PrintTo(w io.Writer, value any, label ...any) error {
 	return DefaultPrinter.PrintTo(w, value)
 }
-
-func String(value any, label ...any) string {
-	return DefaultPrinter.String(value, label...)
-}
