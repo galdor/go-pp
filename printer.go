@@ -118,8 +118,20 @@ func (p *Printer) String(value any, label ...any) string {
 }
 
 func (p *Printer) clone() *Printer {
-	p2 := *p
-	p2.buf = nil
+	p2 := Printer{
+		maxInlineColumn:    p.maxInlineColumn,
+		indent:             p.indent,
+		linePrefix:         p.linePrefix,
+		printTypes:         p.printTypes,
+		hidePrivateFields:  p.hidePrivateFields,
+		thousandsSeparator: p.thousandsSeparator,
+
+		level:  p.level,
+		inline: p.inline,
+
+		pointers: p.pointers,
+	}
+
 	return &p2
 }
 
