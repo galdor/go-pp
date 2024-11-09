@@ -78,7 +78,11 @@ which can be either:
   formatting (e.g. `RawString("foo")`  will simply print `foo`);
 - any other value to be formatted by the printer.
 
-Note that the printer will only call this function on values, not pointers.
+Printers will only call this function on values, not pointers.
+
+Note that formatting functions are never called on non-exported (private) values
+due to Go's limitations (the dreaded "reflect.Value.Interface: cannot return
+value obtained from unexported field or method").
 
 The default function, `pp.FormatValue` handles various standard types such as
 `time.Time` or `regexp.Regexp`.
