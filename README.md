@@ -55,6 +55,8 @@ following options are available:
   - `pp.PrintTypesNever`: never print any type.
 - `(*Printer).SetHidePrivateFields`: hide private (non-exported) fields when
   printing structures.
+- `(*Printer).SetThousandsGroupingMinDigits`: the minimum number of digits for a
+  number to be printed with thousand separators (default: 6).
 - `(*Printer).SetThousandsSeparator`: set the character (rune) used between
   groups of three digits when printing numbers (default: `'_'`).
 

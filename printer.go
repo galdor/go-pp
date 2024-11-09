@@ -31,22 +31,24 @@ const (
 )
 
 var (
-	DefaultOutput             io.Writer = os.Stdout
-	DefaultFormatValueFunc              = FormatValue
-	DefaultMaxInlineColumn              = 80
-	DefaultIndent                       = "  "
-	DefaultThousandsSeparator           = '_'
+	DefaultOutput                     io.Writer = os.Stdout
+	DefaultFormatValueFunc                      = FormatValue
+	DefaultMaxInlineColumn                      = 80
+	DefaultIndent                               = "  "
+	DefaultThousandsGroupingMinDigits           = 6
+	DefaultThousandsSeparator                   = '_'
 )
 
 type Printer struct {
-	defaultOutput      io.Writer
-	formatValue        FormatValueFunc
-	maxInlineColumn    int
-	indent             string
-	linePrefix         string
-	printTypes         PrintTypes
-	hidePrivateFields  bool
-	thousandsSeparator rune
+	defaultOutput              io.Writer
+	formatValue                FormatValueFunc
+	maxInlineColumn            int
+	indent                     string
+	linePrefix                 string
+	printTypes                 PrintTypes
+	hidePrivateFields          bool
+	thousandsGroupingMinDigits int
+	thousandsSeparator         rune
 
 	buf    []byte
 	level  int
@@ -104,6 +106,12 @@ func (p *Printer) SetHidePrivateFields(hide bool) {
 	p.mu.Unlock()
 }
 
+func (p *Printer) SetThousandsGroupingMinDigits(n int) {
+	p.mu.Lock()
+	p.thousandsGroupingMinDigits = n
+	p.mu.Unlock()
+}
+
 func (p *Printer) SetThousandsSeparator(sep rune) {
 	p.mu.Lock()
 	p.thousandsSeparator = sep
@@ -137,14 +145,15 @@ func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
 
 func (p *Printer) clone() *Printer {
 	p2 := Printer{
-		defaultOutput:      p.defaultOutput,
-		formatValue:        p.formatValue,
-		maxInlineColumn:    p.maxInlineColumn,
-		indent:             p.indent,
-		linePrefix:         p.linePrefix,
-		printTypes:         p.printTypes,
-		hidePrivateFields:  p.hidePrivateFields,
-		thousandsSeparator: p.thousandsSeparator,
+		defaultOutput:              p.defaultOutput,
+		formatValue:                p.formatValue,
+		maxInlineColumn:            p.maxInlineColumn,
+		indent:                     p.indent,
+		linePrefix:                 p.linePrefix,
+		printTypes:                 p.printTypes,
+		hidePrivateFields:          p.hidePrivateFields,
+		thousandsGroupingMinDigits: p.thousandsGroupingMinDigits,
+		thousandsSeparator:         p.thousandsSeparator,
 
 		level:  p.level,
 		inline: p.inline,
@@ -174,6 +183,10 @@ func (p *Printer) reset(value any) {
 
 	if p.printTypes == "" {
 		p.printTypes = PrintTypesDefault
+	}
+
+	if p.thousandsGroupingMinDigits == 0 {
+		p.thousandsGroupingMinDigits = DefaultThousandsGroupingMinDigits
 	}
 
 	if p.thousandsSeparator == 0 {
@@ -452,7 +465,7 @@ func (p *Printer) printIntegerValue(v reflect.Value) {
 	i := v.Int()
 	s := strconv.FormatInt(i, 10)
 
-	if p.thousandsSeparator == 0 {
+	if p.thousandsSeparator == 0 || len(s) < p.thousandsGroupingMinDigits {
 		p.printString(s)
 	} else {
 		p.printString(p.addThousandsSeparator(s))
@@ -463,7 +476,7 @@ func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
 	u := v.Uint()
 	s := strconv.FormatUint(u, 10)
 
-	if p.thousandsSeparator == 0 {
+	if p.thousandsSeparator == 0 || len(s) < p.thousandsGroupingMinDigits {
 		p.printString(s)
 	} else {
 		p.printString(p.addThousandsSeparator(s))
@@ -476,7 +489,7 @@ func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
 
 	is, fs, found := strings.Cut(s, ".")
 	if found {
-		if p.thousandsSeparator == 0 {
+		if p.thousandsSeparator == 0 || len(s) < p.thousandsGroupingMinDigits {
 			p.printString(is)
 		} else {
 			p.printString(p.addThousandsSeparator(is))
