@@ -52,26 +52,17 @@ func main() {
 	// Standard types
 	printTitle("STANDARD TYPES")
 
-	var bi big.Int
-	bi.SetString("-8789765579753643555083504787829125689141207431643136", 10)
+	pp.Print(42, "integer")
+	pp.Print(math.E, "float")
+	pp.Print("Hello world!\n", "string")
+	pp.Print(time.Now(), "timestamp")
+	pp.Print(2*time.Hour+15*time.Minute+42250*time.Millisecond, "duration")
+	pp.Print(regexp.MustCompile("^(?i)hell(o+)$"), "regexp")
+	pp.Print(big.NewRat(248311, 179), "rational")
 
 	var av atomic.Value
 	av.Store(42)
-
-	pp.Print(map[string]any{
-		"integer":   42,
-		"float":     math.E,
-		"string":    "Hello world!\n",
-		"timestamp": time.Now(),
-		"duration":  2*time.Hour + 15*time.Minute + 42250*time.Millisecond,
-		"regexp":    regexp.MustCompile("^(?i)hell(o+)$"),
-		"bignums": []any{
-			&bi,
-			big.NewFloat(math.Pi),
-			big.NewRat(248311, 179),
-		},
-		"atomic-value": av,
-	})
+	pp.Print(av, "atomic value")
 
 	// Pointer handling
 	printTitle("REFERENCES")

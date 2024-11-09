@@ -282,7 +282,6 @@ func (p *Printer) printValue(value any) {
 	}
 
 	inlinable := p.inlinableValue(v)
-
 	if inlinable && !p.inline {
 		p2 := p.clone()
 
@@ -296,6 +295,8 @@ func (p *Printer) printValue(value any) {
 			return
 		}
 	}
+
+	printType := p.printTypeForValue(v)
 
 	// Formatting function can return values which are themselves formattable.
 	// So we iterate until we get to a value we cannot format.
@@ -318,11 +319,26 @@ func (p *Printer) printValue(value any) {
 		}
 
 		if s, ok := vs.(RawString); ok {
+			if p.printTypes != PrintTypesNever {
+				p.printString(p.valueTypeString(v))
+				p.printByte('(')
+			}
+
 			p.printValueString(v, string(s))
+
+			if p.printTypes != PrintTypesNever {
+				p.printByte(')')
+			}
 			return
 		}
 
 		v = reflect.ValueOf(vs)
+		printType = true
+	}
+
+	if printType {
+		p.printString(p.valueTypeString(v))
+		p.printByte('(')
 	}
 
 	switch v.Kind() {
@@ -367,6 +383,10 @@ func (p *Printer) printValue(value any) {
 	default:
 		p.printUnknownValue(v)
 	}
+
+	if printType {
+		p.printByte(')')
+	}
 }
 
 func (p *Printer) printLineStart() {
@@ -398,28 +418,14 @@ func (p *Printer) printFormat(format string, args ...any) {
 }
 
 func (p *Printer) printBooleanValue(v reflect.Value) {
-	if p.printTypes == PrintTypesAlways {
-		p.printString(p.valueTypeString(v))
-		p.printByte('(')
-	}
-
 	if b := v.Bool(); b {
 		p.printString("true")
 	} else {
 		p.printString("false")
 	}
-
-	if p.printTypes == PrintTypesAlways {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printIntegerValue(v reflect.Value) {
-	if p.printTypes == PrintTypesAlways {
-		p.printString(p.valueTypeString(v))
-		p.printByte('(')
-	}
-
 	i := v.Int()
 	s := strconv.FormatInt(i, 10)
 
@@ -428,18 +434,9 @@ func (p *Printer) printIntegerValue(v reflect.Value) {
 	} else {
 		p.printString(p.addThousandsSeparator(s))
 	}
-
-	if p.printTypes == PrintTypesAlways {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
-	if p.printTypes == PrintTypesAlways {
-		p.printString(p.valueTypeString(v))
-		p.printByte('(')
-	}
-
 	u := v.Uint()
 	s := strconv.FormatUint(u, 10)
 
@@ -448,18 +445,9 @@ func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
 	} else {
 		p.printString(p.addThousandsSeparator(s))
 	}
-
-	if p.printTypes == PrintTypesAlways {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
-	if p.printTypes == PrintTypesAlways {
-		p.printString(p.valueTypeString(v))
-		p.printByte('(')
-	}
-
 	f := v.Float()
 	s := strconv.FormatFloat(f, 'f', -1, bitSize)
 
@@ -477,18 +465,9 @@ func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
 	} else {
 		p.printString(s)
 	}
-
-	if p.printTypes == PrintTypesAlways {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printComplexValue(v reflect.Value, bitSize int) {
-	if p.printTypes == PrintTypesAlways {
-		p.printString(p.valueTypeString(v))
-		p.printByte('(')
-	}
-
 	c := v.Complex()
 
 	bitSize /= 2 // complex64 uses float32 internally, complex128 uses float64
@@ -502,39 +481,17 @@ func (p *Printer) printComplexValue(v reflect.Value, bitSize int) {
 	}
 	p.printString(is)
 	p.printByte('i')
-
-	if p.printTypes == PrintTypesAlways {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printStringValue(v reflect.Value) {
-	if p.printTypes == PrintTypesAlways {
-		p.printString(p.valueTypeString(v))
-		p.printByte('(')
-	}
-
 	s := v.String()
 	buf := strconv.AppendQuote([]byte{}, s)
 	p.printBytes(buf)
-
-	if p.printTypes == PrintTypesAlways {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printSequenceValue(v reflect.Value) {
 	if v.Kind() == reflect.Slice && v.IsNil() {
-		if p.printTypes != PrintTypesNever {
-			p.printString(p.valueTypeString(v))
-			p.printByte('(')
-		}
-
 		p.printString("nil")
-
-		if p.printTypes != PrintTypesNever {
-			p.printByte(')')
-		}
 	} else {
 		if v.Kind() == reflect.Slice {
 			first, annotation := p.pointerAnnotation(v.Pointer())
@@ -544,10 +501,6 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 					return
 				}
 			}
-		}
-
-		if p.printTypes != PrintTypesNever {
-			p.printString(p.valueTypeString(v))
 		}
 
 		p.printByte('[')
@@ -588,24 +541,11 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 
 func (p *Printer) printMapValue(v reflect.Value) {
 	if v.IsNil() {
-		if p.printTypes != PrintTypesNever {
-			p.printString(p.valueTypeString(v))
-			p.printByte('(')
-		}
-
 		p.printString("nil")
-
-		if p.printTypes != PrintTypesNever {
-			p.printByte(')')
-		}
 	} else {
 		keys := v.MapKeys()
 
 		if len(keys) == 0 {
-			if p.printTypes != PrintTypesNever {
-				p.printString(p.valueTypeString(v))
-			}
-
 			p.printString("{}")
 			return
 		}
@@ -619,10 +559,6 @@ func (p *Printer) printMapValue(v reflect.Value) {
 		}
 
 		slices.SortFunc(keys, p.compareMapKeys)
-
-		if p.printTypes != PrintTypesNever {
-			p.printString(p.valueTypeString(v))
-		}
 
 		p.printByte('{')
 		if !p.inline {
@@ -746,10 +682,6 @@ func (p *Printer) compareMapKeys(v1, v2 reflect.Value) int {
 func (p *Printer) printStructValue(v reflect.Value) {
 	vt := v.Type()
 
-	if p.printTypes != PrintTypesNever {
-		p.printString(vt.String())
-	}
-
 	if vt.NumField() == 0 {
 		p.printString("{}")
 	} else {
@@ -798,49 +730,16 @@ func (p *Printer) printStructValue(v reflect.Value) {
 }
 
 func (p *Printer) printChannelValue(v reflect.Value) {
-	if p.printTypes != PrintTypesNever {
-		p.printByte('(')
-		p.printString(p.valueTypeString(v))
-		p.printByte(')')
-
-		p.printByte('(')
-	}
-
 	p.printPointerAddressValue(v.Pointer())
-
-	if p.printTypes != PrintTypesNever {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printFunctionValue(v reflect.Value) {
-	if p.printTypes != PrintTypesNever {
-		p.printByte('(')
-		p.printString(p.valueTypeString(v))
-		p.printByte(')')
-
-		p.printByte('(')
-	}
-
 	p.printPointerAddressValue(v.Pointer())
-
-	if p.printTypes != PrintTypesNever {
-		p.printByte(')')
-	}
 }
 
 func (p *Printer) printInterfaceValue(v reflect.Value) {
 	if v.IsZero() {
-		if p.printTypes != PrintTypesNever {
-			p.printString(p.valueTypeString(v))
-			p.printByte('(')
-		}
-
 		p.printString("nil")
-
-		if p.printTypes != PrintTypesNever {
-			p.printByte(')')
-		}
 	} else {
 		p.printValue(v.Elem())
 	}
@@ -848,16 +747,7 @@ func (p *Printer) printInterfaceValue(v reflect.Value) {
 
 func (p *Printer) printPointerValue(v reflect.Value) {
 	if v.IsZero() {
-		if p.printTypes != PrintTypesNever {
-			p.printString(p.valueTypeString(v))
-			p.printByte('(')
-		}
-
 		p.printString("nil")
-
-		if p.printTypes != PrintTypesNever {
-			p.printByte(')')
-		}
 	} else {
 		first, annotation := p.pointerAnnotation(v.Pointer())
 		if annotation != "" {
@@ -867,23 +757,8 @@ func (p *Printer) printPointerValue(v reflect.Value) {
 			}
 		}
 
-		// The output for pointers to pointers can be confusing, so we print the
-		// type by default.
-		printType := p.printTypes == PrintTypesAlways ||
-			(v.Elem().Kind() == reflect.Pointer &&
-				p.printTypes != PrintTypesNever)
-
-		if printType {
-			p.printString(p.valueTypeString(v))
-			p.printByte('(')
-		}
-
 		p.printByte('&')
 		p.printValue(v.Elem())
-
-		if printType {
-			p.printByte(')')
-		}
 	}
 }
 
@@ -907,16 +782,41 @@ func (p *Printer) printUnknownValue(v reflect.Value) {
 }
 
 func (p *Printer) printValueString(v reflect.Value, s string) {
-	if p.printTypes != PrintTypesNever {
-		p.printString(p.valueTypeString(v))
-		p.printByte('(')
-	}
-
 	p.printString(s)
+}
 
-	if p.printTypes != PrintTypesNever {
-		p.printByte(')')
+func (p *Printer) printTypeForValue(v reflect.Value) bool {
+	switch p.printTypes {
+	case PrintTypesAlways:
+		return true
+
+	case PrintTypesDefault:
+		kinds := []reflect.Kind{
+			reflect.Slice,
+			reflect.Array,
+			reflect.Map,
+			reflect.Struct,
+			reflect.Chan,
+			reflect.Func,
+			reflect.Interface,
+		}
+		if slices.Contains(kinds, v.Kind()) {
+			return true
+		}
+
+		if v.Kind() == reflect.Pointer {
+			return v.IsNil() ||
+				v.Elem().Kind() == reflect.Pointer ||
+				v.Elem().Kind() == reflect.Interface
+		}
+
+		return false
+
+	case PrintTypesNever:
+		return false
 	}
+
+	return true
 }
 
 func (p *Printer) valueTypeString(v reflect.Value) string {
