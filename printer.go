@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -265,6 +266,19 @@ func (p *Printer) printValue(value any) {
 		if utf8.RuneCount(data) <= p.currentMaxInlineColumn() {
 			p.printBytes(data)
 			return
+		}
+	}
+
+	if v.CanInterface() {
+		switch vv := v.Interface().(type) {
+		case time.Time:
+			p.printTime(v, &vv)
+			return
+		case *time.Time:
+			if vv != nil {
+				p.printTime(v, vv)
+				return
+			}
 		}
 	}
 
@@ -835,6 +849,19 @@ func (p *Printer) printPointerAddressValue(ptr uintptr) {
 
 func (p *Printer) printUnknownValue(v reflect.Value) {
 	p.printFormat("%#v", v)
+}
+
+func (p *Printer) printTime(v reflect.Value, t *time.Time) {
+	if p.printTypes != PrintTypesNever {
+		p.printString(p.valueTypeString(v))
+		p.printByte('(')
+	}
+
+	p.printString(t.Format(time.RFC3339))
+
+	if p.printTypes != PrintTypesNever {
+		p.printByte(')')
+	}
 }
 
 func (p *Printer) valueTypeString(v reflect.Value) string {
