@@ -198,24 +198,26 @@ func (p *Printer) initPointers(v reflect.Value) {
 			return
 		}
 
-		vt := v.Type()
-
 		switch v.Kind() {
-		case reflect.Map, reflect.Slice, reflect.Struct, reflect.Pointer:
+		case reflect.Map, reflect.Slice, reflect.Struct:
+		case reflect.Pointer, reflect.Interface:
+
 		default:
 			return
 		}
 
-		if v.Kind() != reflect.Struct {
+		if v.Kind() != reflect.Struct && v.Kind() != reflect.Interface {
 			if v.IsNil() {
 				return
 			}
 
 			ptr := v.Pointer()
+
 			if _, found := visitedPointers[ptr]; found {
 				p.pointers[ptr] = &pointerRef{n: len(p.pointers) + 1}
 				return
 			}
+
 			visitedPointers[ptr] = struct{}{}
 		}
 
@@ -233,20 +235,14 @@ func (p *Printer) initPointers(v reflect.Value) {
 
 		case reflect.Struct:
 			for i := range v.NumField() {
-				fv := v.Field(i)
-				ft := vt.Field(i)
-
-				if !ft.IsExported() && p.hidePrivateFields {
-					return
-				}
-
-				fn(fv)
+				fn(v.Field(i))
 			}
 
 		case reflect.Pointer:
-			if !v.IsZero() {
-				fn(v.Elem())
-			}
+			fn(v.Elem())
+
+		case reflect.Interface:
+			fn(v.Elem())
 		}
 	}
 
