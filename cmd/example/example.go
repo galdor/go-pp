@@ -16,6 +16,16 @@ type Bar struct {
 	Foo *Foo
 }
 
+type Point struct {
+	X int
+	Y int
+	Z int
+}
+
+type Complex struct {
+	Points []Point
+}
+
 func main() {
 	pp.Print(time.Now(), "now")
 
@@ -30,14 +40,12 @@ func main() {
 
 	pp.Print(&foo1)
 
-	// Cyclic slices
-	var ns []any
-
-	ns = append(ns, 1)
-	ns = append(ns, 2)
-	ns = append(ns, 3)
-	ns[0] = ns
-	ns[2] = ns
-
-	pp.Print(ns)
+	// Inline content
+	pp.Print(Complex{
+		Points: []Point{
+			{1, 2, 3},
+			{4, 5, 1},
+			{3, 6, 2},
+		},
+	})
 }

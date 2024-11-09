@@ -25,20 +25,22 @@ const (
 )
 
 var (
-	DefaultIndent = "  "
+	DefaultMaxColumn = 80
+	DefaultIndent    = "  "
 )
 
 type Printer struct {
+	MaxColumn  int
 	Indent     string
 	LinePrefix string
 	PrintTypes PrintTypes
 
 	level int
 
-	cyclic   bool
 	pointers map[uintptr]*pointerRef
 
-	buf []byte
+	buf    []byte
+	inline bool
 }
 
 type pointerRef struct {
@@ -66,7 +68,17 @@ func (p *Printer) String(value any, label ...any) string {
 	return string(p.buf)
 }
 
+func (p *Printer) clone() *Printer {
+	p2 := *p
+	p2.buf = nil
+	return &p2
+}
+
 func (p *Printer) reset() {
+	if p.MaxColumn == 0 {
+		p.MaxColumn = DefaultMaxColumn
+	}
+
 	if p.Indent == "" {
 		p.Indent = DefaultIndent
 	}
@@ -75,7 +87,6 @@ func (p *Printer) reset() {
 		p.PrintTypes = PrintTypesDefault
 	}
 
-	p.cyclic = false
 	p.pointers = make(map[uintptr]*pointerRef)
 
 	p.buf = nil
@@ -103,7 +114,6 @@ func (p *Printer) annotatePointer(ref *pointerRef) {
 
 func (p *Printer) checkPointer(ptr uintptr) bool {
 	if ref, found := p.pointers[ptr]; found {
-		p.cyclic = true
 		p.annotatePointer(ref)
 
 		p.printFormat("#%d#", ref.n)
@@ -140,6 +150,22 @@ func (p *Printer) printValue(value any) {
 		v = rv
 	} else {
 		v = reflect.ValueOf(value)
+	}
+
+	inlinable := p.inlinableValue(v)
+
+	if inlinable && !p.inline {
+		p2 := p.clone()
+
+		p2.inline = true
+		p2.printValue(v)
+		data := p2.buf
+		p.inline = false
+
+		if len(data) <= p.MaxColumn-len(p.LinePrefix) {
+			p.printBytes(data)
+			return
+		}
 	}
 
 	switch v.Kind() {
@@ -338,20 +364,37 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 		}
 
 		p.printByte('[')
-		p.printNewline()
+		if !p.inline {
+			p.printNewline()
+		}
 		p.level++
 
-		for i := range v.Len() {
+		n := v.Len()
+		for i := range n {
 			ev := v.Index(i)
 
-			p.printLineStart()
+			if !p.inline {
+				p.printLineStart()
+			}
+
 			p.printValue(ev)
-			p.printByte(',')
-			p.printNewline()
+			if !p.inline || i < n-1 {
+				p.printByte(',')
+			}
+
+			if p.inline {
+				if i < n-1 {
+					p.printByte(' ')
+				}
+			} else {
+				p.printNewline()
+			}
 		}
 
 		p.level--
-		p.printLineStart()
+		if !p.inline {
+			p.printLineStart()
+		}
 		p.printByte(']')
 	}
 }
@@ -369,10 +412,6 @@ func (p *Printer) printMapValue(v reflect.Value) {
 			p.printByte(')')
 		}
 	} else {
-		if !p.checkPointer(v.Pointer()) {
-			return
-		}
-
 		keys := v.MapKeys()
 
 		if len(keys) == 0 {
@@ -382,6 +421,10 @@ func (p *Printer) printMapValue(v reflect.Value) {
 
 			p.printString("{}")
 		} else {
+			if !p.checkPointer(v.Pointer()) {
+				return
+			}
+
 			slices.SortFunc(keys, p.compareMapKeys)
 
 			if p.PrintTypes != PrintTypesNever {
@@ -389,22 +432,43 @@ func (p *Printer) printMapValue(v reflect.Value) {
 			}
 
 			p.printByte('{')
-			p.printNewline()
+			if !p.inline {
+				p.printNewline()
+			}
 			p.level++
 
+			n := len(keys)
+			i := 0
 			for _, kv := range keys {
 				vv := v.MapIndex(kv)
 
-				p.printLineStart()
+				if !p.inline {
+					p.printLineStart()
+				}
+
 				p.printValue(kv)
 				p.printString(": ")
+
 				p.printValue(vv)
-				p.printByte(',')
-				p.printNewline()
+				if !p.inline || i < n-1 {
+					p.printByte(',')
+				}
+
+				if p.inline {
+					if i < n-1 {
+						p.printByte(' ')
+					}
+				} else {
+					p.printNewline()
+				}
+
+				i++
 			}
 
 			p.level--
-			p.printLineStart()
+			if !p.inline {
+				p.printLineStart()
+			}
 			p.printByte('}')
 		}
 	}
@@ -498,23 +562,41 @@ func (p *Printer) printStructValue(v reflect.Value) {
 		p.printString("{}")
 	} else {
 		p.printByte('{')
-		p.printNewline()
+		if !p.inline {
+			p.printNewline()
+		}
 		p.level++
 
-		for i := range vt.NumField() {
+		n := vt.NumField()
+		for i := range n {
 			fv := v.Field(i)
 			ft := vt.Field(i)
 
-			p.printLineStart()
+			if !p.inline {
+				p.printLineStart()
+			}
+
 			p.printString(ft.Name)
 			p.printString(": ")
+
 			p.printValue(fv)
-			p.printByte(',')
-			p.printNewline()
+			if !p.inline || i < n-1 {
+				p.printByte(',')
+			}
+
+			if p.inline {
+				if i < n-1 {
+					p.printByte(' ')
+				}
+			} else {
+				p.printNewline()
+			}
 		}
 
 		p.level--
-		p.printLineStart()
+		if !p.inline {
+			p.printLineStart()
+		}
 		p.printByte('}')
 	}
 }
@@ -595,15 +677,13 @@ func (p *Printer) printPointerAddressValue(ptr uintptr) {
 	if ptr == 0 {
 		p.printString("nil")
 	} else {
-		p.printString("0x")
-
 		switch uintptrSize {
 		case 4:
-			p.printFormat("%08x", ptr)
+			p.printFormat("%#08x", ptr)
 		case 8:
-			p.printFormat("%016x", ptr)
+			p.printFormat("%#016x", ptr)
 		default:
-			p.printFormat("%x", ptr)
+			p.printFormat("%#x", ptr)
 		}
 	}
 }
@@ -616,10 +696,70 @@ func (p *Printer) valueTypeString(v reflect.Value) string {
 	s := v.Type().String()
 
 	// It does not seem possible to get the actual interface type behind a
-	// variable. I.e. reflect.TypeOf(any(42)).Kind is reflect.Int, not
+	// variable. I.e. reflect.TypeOf(any(42)).Kind() is reflect.Int, not
 	// reflect.interface. So we do something really ugly. But it works. Blame
 	// Go.
 	s = strings.ReplaceAll(s, "interface {}", "any")
 
 	return s
+}
+
+func (p *Printer) inlinableValue(v reflect.Value) bool {
+	if p.atomicValue(v) {
+		return true
+	}
+
+	switch v.Kind() {
+	case reflect.Array, reflect.Slice:
+		for i := range v.Len() {
+			if ev := v.Index(i); !p.atomicValue(ev) {
+				return false
+			}
+		}
+
+		return true
+
+	case reflect.Map:
+		iter := v.MapRange()
+		for iter.Next() {
+			if !p.atomicValue(iter.Value()) {
+				return false
+			}
+		}
+
+		return true
+
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if fv := v.Field(i); !p.atomicValue(fv) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
+}
+
+func (p *Printer) atomicValue(v reflect.Value) bool {
+	atomicKinds := []reflect.Kind{
+		reflect.Bool,
+		reflect.Int,
+		reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint,
+		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128,
+		reflect.String,
+		reflect.Func, reflect.Chan,
+		reflect.UnsafePointer,
+	}
+
+	if v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer {
+		return p.atomicValue(v.Elem())
+	}
+
+	return slices.Contains(atomicKinds, v.Kind())
 }
