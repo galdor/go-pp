@@ -31,13 +31,15 @@ const (
 )
 
 var (
-	DefaultMaxInlineColumn    = 80
-	DefaultIndent             = "  "
-	DefaultThousandsSeparator = '_'
-	DefaultFormatValueFunc    = FormatValue
+	DefaultOutput             io.Writer = os.Stdout
+	DefaultMaxInlineColumn              = 80
+	DefaultIndent                       = "  "
+	DefaultThousandsSeparator           = '_'
+	DefaultFormatValueFunc              = FormatValue
 )
 
 type Printer struct {
+	defaultOutput      io.Writer
 	formatValue        FormatValueFunc
 	maxInlineColumn    int
 	indent             string
@@ -58,6 +60,12 @@ type Printer struct {
 type pointerRef struct {
 	n       int
 	printed bool
+}
+
+func (p *Printer) SetDefaultOutput(w io.Writer) {
+	p.mu.Lock()
+	p.defaultOutput = w
+	p.mu.Unlock()
 }
 
 func (p *Printer) SetFormatValueFunc(fn FormatValueFunc) {
@@ -103,7 +111,7 @@ func (p *Printer) SetThousandsSeparator(sep rune) {
 }
 
 func (p *Printer) Print(value any, label ...any) error {
-	return p.PrintTo(os.Stdout, value, label...)
+	return p.PrintTo(nil, value, label...)
 }
 
 func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
@@ -111,6 +119,11 @@ func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
 	defer p.mu.Unlock()
 
 	p.reset(value)
+
+	if w == nil {
+		w = p.defaultOutput
+	}
+
 	p.printValue(value)
 
 	var buf bytes.Buffer
@@ -124,6 +137,7 @@ func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
 
 func (p *Printer) clone() *Printer {
 	p2 := Printer{
+		defaultOutput:      p.defaultOutput,
 		formatValue:        p.formatValue,
 		maxInlineColumn:    p.maxInlineColumn,
 		indent:             p.indent,
@@ -142,6 +156,10 @@ func (p *Printer) clone() *Printer {
 }
 
 func (p *Printer) reset(value any) {
+	if p.defaultOutput == nil {
+		p.defaultOutput = DefaultOutput
+	}
+
 	if p.formatValue == nil {
 		p.formatValue = FormatValue
 	}
