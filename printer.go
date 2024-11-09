@@ -13,7 +13,9 @@ import (
 	"unsafe"
 )
 
-type FormatValueFunc func(reflect.Value) string
+type RawString string
+
+type FormatValueFunc func(reflect.Value) any
 
 type PrintTypes string
 
@@ -295,23 +297,32 @@ func (p *Printer) printValue(value any) {
 		}
 	}
 
-	if v.CanInterface() {
-		if p.formatValue != nil {
-			var s string
-
-			if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-				if !v.IsNil() {
-					s = p.formatValue(v.Elem())
-				}
-			} else {
-				s = p.formatValue(v)
-			}
-
-			if s != "" {
-				p.printValueString(v, s)
-				return
-			}
+	// Formatting function can return values which are themselves formattable.
+	// So we iterate until we get to a value we cannot format.
+	for {
+		if !v.CanInterface() || p.formatValue == nil {
+			break
 		}
+
+		var vs any
+		if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+			if !v.IsNil() {
+				vs = p.formatValue(v.Elem())
+			}
+		} else {
+			vs = p.formatValue(v)
+		}
+
+		if vs == nil {
+			break
+		}
+
+		if s, ok := vs.(RawString); ok {
+			p.printValueString(v, string(s))
+			return
+		}
+
+		v = reflect.ValueOf(vs)
 	}
 
 	switch v.Kind() {
