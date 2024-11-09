@@ -1,7 +1,6 @@
 package pp
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -44,9 +43,8 @@ type Printer struct {
 }
 
 type pointerRef struct {
-	n         int
-	idx       int
-	annotated bool
+	n       int
+	printed bool
 }
 
 func (p *Printer) Print(value any, label ...any) error {
@@ -54,7 +52,7 @@ func (p *Printer) Print(value any, label ...any) error {
 }
 
 func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
-	p.reset()
+	p.reset(value)
 	p.maybePrintLabel(label...)
 	p.printValueLine(value)
 	_, err := w.Write(p.buf)
@@ -62,7 +60,7 @@ func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
 }
 
 func (p *Printer) String(value any, label ...any) string {
-	p.reset()
+	p.reset(value)
 	p.maybePrintLabel(label...)
 	p.printValueLine(value)
 	return string(p.buf)
@@ -74,7 +72,7 @@ func (p *Printer) clone() *Printer {
 	return &p2
 }
 
-func (p *Printer) reset() {
+func (p *Printer) reset(value any) {
 	if p.MaxColumn == 0 {
 		p.MaxColumn = DefaultMaxColumn
 	}
@@ -87,41 +85,76 @@ func (p *Printer) reset() {
 		p.PrintTypes = PrintTypesDefault
 	}
 
+	p.buf = nil
+
+	p.initPointers(reflect.ValueOf(value))
+}
+
+func (p *Printer) initPointers(v reflect.Value) {
 	p.pointers = make(map[uintptr]*pointerRef)
 
-	p.buf = nil
-}
+	visitedPointers := make(map[uintptr]struct{})
 
-func (p *Printer) storePointer(ptr uintptr) {
-	ref := pointerRef{
-		n:   len(p.pointers) + 1,
-		idx: len(p.buf),
+	var fn func(reflect.Value)
+	fn = func(v reflect.Value) {
+		switch v.Kind() {
+		case reflect.Map, reflect.Slice, reflect.Struct, reflect.Pointer:
+		default:
+			return
+		}
+
+		if v.Kind() != reflect.Struct {
+			if v.IsNil() {
+				return
+			}
+
+			ptr := v.Pointer()
+			if _, found := visitedPointers[ptr]; found {
+				p.pointers[ptr] = &pointerRef{n: len(p.pointers) + 1}
+				return
+			}
+			visitedPointers[ptr] = struct{}{}
+		}
+
+		switch v.Kind() {
+		case reflect.Map:
+			iter := v.MapRange()
+			for iter.Next() {
+				fn(iter.Value())
+			}
+
+		case reflect.Slice:
+			for i := range v.Len() {
+				fn(v.Index(i))
+			}
+
+		case reflect.Struct:
+			for i := range v.NumField() {
+				fn(v.Field(i))
+			}
+
+		case reflect.Pointer:
+			if !v.IsZero() {
+				fn(v.Elem())
+			}
+		}
 	}
 
-	p.pointers[ptr] = &ref
+	fn(v)
 }
 
-func (p *Printer) annotatePointer(ref *pointerRef) {
-	if !ref.annotated {
-		before, after := p.buf[:ref.idx], p.buf[ref.idx:]
-
-		s := fmt.Sprintf("#%d=", ref.n)
-		p.buf = bytes.Join([][]byte{before, after}, []byte(s))
-
-		ref.annotated = true
-	}
-}
-
-func (p *Printer) checkPointer(ptr uintptr) bool {
-	if ref, found := p.pointers[ptr]; found {
-		p.annotatePointer(ref)
-
-		p.printFormat("#%d#", ref.n)
-		return false
+func (p *Printer) pointerAnnotation(ptr uintptr) (bool, string) {
+	ref, found := p.pointers[ptr]
+	if !found {
+		return false, ""
 	}
 
-	p.storePointer(ptr)
-	return true
+	if !ref.printed {
+		ref.printed = true
+		return true, "#" + strconv.Itoa(ref.n) + "="
+	}
+
+	return false, "#" + strconv.Itoa(ref.n) + "#"
 }
 
 func (p *Printer) maybePrintLabel(label ...any) {
@@ -355,8 +388,14 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 			p.printByte(')')
 		}
 	} else {
-		if v.Kind() == reflect.Slice && !p.checkPointer(v.Pointer()) {
-			return
+		if v.Kind() == reflect.Slice {
+			first, annotation := p.pointerAnnotation(v.Pointer())
+			if annotation != "" {
+				p.printString(annotation)
+				if !first {
+					return
+				}
+			}
 		}
 
 		if p.PrintTypes != PrintTypesNever {
@@ -420,57 +459,62 @@ func (p *Printer) printMapValue(v reflect.Value) {
 			}
 
 			p.printString("{}")
-		} else {
-			if !p.checkPointer(v.Pointer()) {
+			return
+		}
+
+		first, annotation := p.pointerAnnotation(v.Pointer())
+		if annotation != "" {
+			p.printString(annotation)
+			if !first {
 				return
 			}
+		}
 
-			slices.SortFunc(keys, p.compareMapKeys)
+		slices.SortFunc(keys, p.compareMapKeys)
 
-			if p.PrintTypes != PrintTypesNever {
-				p.printString(p.valueTypeString(v))
-			}
+		if p.PrintTypes != PrintTypesNever {
+			p.printString(p.valueTypeString(v))
+		}
 
-			p.printByte('{')
-			if !p.inline {
-				p.printNewline()
-			}
-			p.level++
+		p.printByte('{')
+		if !p.inline {
+			p.printNewline()
+		}
+		p.level++
 
-			n := len(keys)
-			i := 0
-			for _, kv := range keys {
-				vv := v.MapIndex(kv)
+		n := len(keys)
+		i := 0
+		for _, kv := range keys {
+			vv := v.MapIndex(kv)
 
-				if !p.inline {
-					p.printLineStart()
-				}
-
-				p.printValue(kv)
-				p.printString(": ")
-
-				p.printValue(vv)
-				if !p.inline || i < n-1 {
-					p.printByte(',')
-				}
-
-				if p.inline {
-					if i < n-1 {
-						p.printByte(' ')
-					}
-				} else {
-					p.printNewline()
-				}
-
-				i++
-			}
-
-			p.level--
 			if !p.inline {
 				p.printLineStart()
 			}
-			p.printByte('}')
+
+			p.printValue(kv)
+			p.printString(": ")
+
+			p.printValue(vv)
+			if !p.inline || i < n-1 {
+				p.printByte(',')
+			}
+
+			if p.inline {
+				if i < n-1 {
+					p.printByte(' ')
+				}
+			} else {
+				p.printNewline()
+			}
+
+			i++
 		}
+
+		p.level--
+		if !p.inline {
+			p.printLineStart()
+		}
+		p.printByte('}')
 	}
 }
 
@@ -663,13 +707,19 @@ func (p *Printer) printPointerValue(v reflect.Value) {
 			p.printByte(')')
 		}
 	} else {
-		if p.checkPointer(v.Pointer()) {
-			if p.PrintTypes != PrintTypesNever {
-				p.printByte('&')
+		first, annotation := p.pointerAnnotation(v.Pointer())
+		if annotation != "" {
+			p.printString(annotation)
+			if !first {
+				return
 			}
-
-			p.printValue(v.Elem())
 		}
+
+		if p.PrintTypes != PrintTypesNever {
+			p.printByte('&')
+		}
+
+		p.printValue(v.Elem())
 	}
 }
 
