@@ -66,7 +66,7 @@ func main() {
 		"duration":  2*time.Hour + 15*time.Minute + 42250*time.Millisecond,
 		"regexp":    regexp.MustCompile("^(?i)hell(o+)$"),
 		"bignums": []any{
-			bi,
+			&bi,
 			big.NewFloat(math.Pi),
 			big.NewRat(248311, 179),
 		},

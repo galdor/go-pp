@@ -1,6 +1,7 @@
 package pp
 
 import (
+	"math/big"
 	"reflect"
 	"regexp"
 	"sync/atomic"
@@ -26,27 +27,21 @@ func FormatValue(v reflect.Value) any {
 	case atomic.Value:
 		return vv.Load()
 
+	case big.Int:
+		return RawString(vv.String())
+	case big.Float:
+		return RawString(vv.String())
+	case big.Rat:
+		return RawString(vv.String())
+
 	case regexp.Regexp:
-		return FormatRegexp(&vv)
+		return RawString("/" + vv.String() + "/")
 
 	case time.Duration:
-		return FormatDuration(vv)
-
+		return RawString(vv.String())
 	case time.Time:
-		return FormatTime(vv)
+		return RawString(vv.Format(time.RFC3339Nano))
 	}
 
 	return nil
-}
-
-func FormatRegexp(re *regexp.Regexp) any {
-	return RawString("/" + re.String() + "/")
-}
-
-func FormatDuration(d time.Duration) any {
-	return RawString(d.String())
-}
-
-func FormatTime(t time.Time) any {
-	return RawString(t.Format(time.RFC3339Nano))
 }
