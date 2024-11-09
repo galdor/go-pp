@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"regexp"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -49,9 +52,25 @@ func main() {
 	// Standard types
 	printTitle("STANDARD TYPES")
 
+	var bi big.Int
+	bi.SetString("-8789765579753643555083504787829125689141207431643136", 10)
+
+	var av atomic.Value
+	av.Store(42)
+
 	pp.Print(map[string]any{
+		"integer":   42,
+		"float":     math.E,
+		"string":    "Hello world!\n",
 		"timestamp": time.Now(),
+		"duration":  3*time.Hour + 15*time.Minute + 42*time.Second,
 		"regexp":    regexp.MustCompile("^(?i)hell(o+)$"),
+		"bignums": []any{
+			bi,
+			big.NewFloat(math.Pi),
+			big.NewRat(248311, 179),
+		},
+		"atomic-value": av,
 	})
 
 	// Pointer handling

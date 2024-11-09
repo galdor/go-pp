@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -31,21 +32,20 @@ var (
 )
 
 type Printer struct {
-	MaxInlineColumn    int
-	Indent             string
-	LinePrefix         string
-	PrintTypes         PrintTypes
-	HidePrivateFields  bool
-	ThousandsSeparator rune
+	maxInlineColumn    int
+	indent             string
+	linePrefix         string
+	printTypes         PrintTypes
+	hidePrivateFields  bool
+	thousandsSeparator rune
 
-	level int
+	buf    []byte
+	level  int
+	inline bool
 
 	pointers map[uintptr]*pointerRef
 
-	buf    []byte
-	inline bool
-
-	maxInlineColumn int
+	mu sync.Mutex
 }
 
 type pointerRef struct {
@@ -53,22 +53,66 @@ type pointerRef struct {
 	printed bool
 }
 
+func (p *Printer) SetMaxInlineColumnt(column int) {
+	p.mu.Lock()
+	p.maxInlineColumn = column
+	p.mu.Unlock()
+}
+
+func (p *Printer) SetIndent(indent string) {
+	p.mu.Lock()
+	p.indent = indent
+	p.mu.Unlock()
+}
+
+func (p *Printer) SetLinePrefix(prefix string) {
+	p.mu.Lock()
+	p.linePrefix = prefix
+	p.mu.Unlock()
+}
+
+func (p *Printer) SetPrintTypes(types PrintTypes) {
+	p.mu.Lock()
+	p.printTypes = types
+	p.mu.Unlock()
+}
+
+func (p *Printer) SetHidePrivateFields(hide bool) {
+	p.mu.Lock()
+	p.hidePrivateFields = hide
+	p.mu.Unlock()
+}
+
+func (p *Printer) SetThousandsSeparator(sep rune) {
+	p.mu.Lock()
+	p.thousandsSeparator = sep
+	p.mu.Unlock()
+}
+
 func (p *Printer) Print(value any, label ...any) error {
 	return p.PrintTo(os.Stdout, value, label...)
 }
 
 func (p *Printer) PrintTo(w io.Writer, value any, label ...any) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.reset(value)
 	p.maybePrintLabel(label...)
 	p.printValueLine(value)
+
 	_, err := w.Write(p.buf)
 	return err
 }
 
 func (p *Printer) String(value any, label ...any) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.reset(value)
 	p.maybePrintLabel(label...)
 	p.printValueLine(value)
+
 	return string(p.buf)
 }
 
@@ -79,23 +123,21 @@ func (p *Printer) clone() *Printer {
 }
 
 func (p *Printer) reset(value any) {
-	if p.MaxInlineColumn == 0 {
-		p.MaxInlineColumn = DefaultMaxInlineColumn
+	if p.maxInlineColumn == 0 {
+		p.maxInlineColumn = DefaultMaxInlineColumn
 	}
 
-	if p.Indent == "" {
-		p.Indent = DefaultIndent
+	if p.indent == "" {
+		p.indent = DefaultIndent
 	}
 
-	if p.PrintTypes == "" {
-		p.PrintTypes = PrintTypesDefault
+	if p.printTypes == "" {
+		p.printTypes = PrintTypesDefault
 	}
 
-	if p.ThousandsSeparator == 0 {
-		p.ThousandsSeparator = DefaultThousandsSeparator
+	if p.thousandsSeparator == 0 {
+		p.thousandsSeparator = DefaultThousandsSeparator
 	}
-
-	p.maxInlineColumn = p.MaxInlineColumn - len(p.LinePrefix)
 
 	p.buf = nil
 
@@ -147,7 +189,7 @@ func (p *Printer) initPointers(v reflect.Value) {
 				fv := v.Field(i)
 				ft := vt.Field(i)
 
-				if !ft.IsExported() && p.HidePrivateFields {
+				if !ft.IsExported() && p.hidePrivateFields {
 					return
 				}
 
@@ -267,10 +309,10 @@ func (p *Printer) printValue(value any) {
 }
 
 func (p *Printer) printLineStart() {
-	p.printString(p.LinePrefix)
+	p.printString(p.linePrefix)
 
 	for range p.level {
-		p.printString(p.Indent)
+		p.printString(p.indent)
 	}
 }
 
@@ -295,7 +337,7 @@ func (p *Printer) printFormat(format string, args ...any) {
 }
 
 func (p *Printer) printBooleanValue(v reflect.Value) {
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
@@ -306,13 +348,13 @@ func (p *Printer) printBooleanValue(v reflect.Value) {
 		p.printString("false")
 	}
 
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printIntegerValue(v reflect.Value) {
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
@@ -320,19 +362,19 @@ func (p *Printer) printIntegerValue(v reflect.Value) {
 	i := v.Int()
 	s := strconv.FormatInt(i, 10)
 
-	if p.ThousandsSeparator == 0 {
+	if p.thousandsSeparator == 0 {
 		p.printString(s)
 	} else {
 		p.printString(p.addThousandsSeparator(s))
 	}
 
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
@@ -340,19 +382,19 @@ func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
 	u := v.Uint()
 	s := strconv.FormatUint(u, 10)
 
-	if p.ThousandsSeparator == 0 {
+	if p.thousandsSeparator == 0 {
 		p.printString(s)
 	} else {
 		p.printString(p.addThousandsSeparator(s))
 	}
 
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
@@ -362,7 +404,7 @@ func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
 
 	is, fs, found := strings.Cut(s, ".")
 	if found {
-		if p.ThousandsSeparator == 0 {
+		if p.thousandsSeparator == 0 {
 			p.printString(is)
 		} else {
 			p.printString(p.addThousandsSeparator(is))
@@ -375,13 +417,13 @@ func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
 		p.printString(s)
 	}
 
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printComplexValue(v reflect.Value, bitSize int) {
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
@@ -400,13 +442,13 @@ func (p *Printer) printComplexValue(v reflect.Value, bitSize int) {
 	p.printString(is)
 	p.printByte('i')
 
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printStringValue(v reflect.Value) {
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
@@ -415,21 +457,21 @@ func (p *Printer) printStringValue(v reflect.Value) {
 	buf := strconv.AppendQuote([]byte{}, s)
 	p.printBytes(buf)
 
-	if p.PrintTypes == PrintTypesAlways {
+	if p.printTypes == PrintTypesAlways {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printSequenceValue(v reflect.Value) {
 	if v.Kind() == reflect.Slice && v.IsNil() {
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
 		p.printString("nil")
 
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printByte(')')
 		}
 	} else {
@@ -443,7 +485,7 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 			}
 		}
 
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printString(p.valueTypeString(v))
 		}
 
@@ -485,21 +527,21 @@ func (p *Printer) printSequenceValue(v reflect.Value) {
 
 func (p *Printer) printMapValue(v reflect.Value) {
 	if v.IsNil() {
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
 		p.printString("nil")
 
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printByte(')')
 		}
 	} else {
 		keys := v.MapKeys()
 
 		if len(keys) == 0 {
-			if p.PrintTypes != PrintTypesNever {
+			if p.printTypes != PrintTypesNever {
 				p.printString(p.valueTypeString(v))
 			}
 
@@ -517,7 +559,7 @@ func (p *Printer) printMapValue(v reflect.Value) {
 
 		slices.SortFunc(keys, p.compareMapKeys)
 
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printString(p.valueTypeString(v))
 		}
 
@@ -643,7 +685,7 @@ func (p *Printer) compareMapKeys(v1, v2 reflect.Value) int {
 func (p *Printer) printStructValue(v reflect.Value) {
 	vt := v.Type()
 
-	if p.PrintTypes != PrintTypesNever {
+	if p.printTypes != PrintTypesNever {
 		p.printString(vt.String())
 	}
 
@@ -661,7 +703,7 @@ func (p *Printer) printStructValue(v reflect.Value) {
 			fv := v.Field(i)
 			ft := vt.Field(i)
 
-			if !ft.IsExported() && p.HidePrivateFields {
+			if !ft.IsExported() && p.hidePrivateFields {
 				continue
 			}
 
@@ -695,7 +737,7 @@ func (p *Printer) printStructValue(v reflect.Value) {
 }
 
 func (p *Printer) printChannelValue(v reflect.Value) {
-	if p.PrintTypes != PrintTypesNever {
+	if p.printTypes != PrintTypesNever {
 		p.printByte('(')
 		p.printString(p.valueTypeString(v))
 		p.printByte(')')
@@ -705,13 +747,13 @@ func (p *Printer) printChannelValue(v reflect.Value) {
 
 	p.printPointerAddressValue(v.Pointer())
 
-	if p.PrintTypes != PrintTypesNever {
+	if p.printTypes != PrintTypesNever {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printFunctionValue(v reflect.Value) {
-	if p.PrintTypes != PrintTypesNever {
+	if p.printTypes != PrintTypesNever {
 		p.printByte('(')
 		p.printString(p.valueTypeString(v))
 		p.printByte(')')
@@ -721,21 +763,21 @@ func (p *Printer) printFunctionValue(v reflect.Value) {
 
 	p.printPointerAddressValue(v.Pointer())
 
-	if p.PrintTypes != PrintTypesNever {
+	if p.printTypes != PrintTypesNever {
 		p.printByte(')')
 	}
 }
 
 func (p *Printer) printInterfaceValue(v reflect.Value) {
 	if v.IsZero() {
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
 		p.printString("nil")
 
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printByte(')')
 		}
 	} else {
@@ -745,14 +787,14 @@ func (p *Printer) printInterfaceValue(v reflect.Value) {
 
 func (p *Printer) printPointerValue(v reflect.Value) {
 	if v.IsZero() {
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printString(p.valueTypeString(v))
 			p.printByte('(')
 		}
 
 		p.printString("nil")
 
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printByte(')')
 		}
 	} else {
@@ -764,7 +806,7 @@ func (p *Printer) printPointerValue(v reflect.Value) {
 			}
 		}
 
-		if p.PrintTypes != PrintTypesNever {
+		if p.printTypes != PrintTypesNever {
 			p.printByte('&')
 		}
 
@@ -811,7 +853,7 @@ func (p *Printer) addThousandsSeparator(s string) string {
 
 	for i, c := range cs {
 		if i > 0 && i%3 == 0 {
-			cs2 = append(cs2, p.ThousandsSeparator)
+			cs2 = append(cs2, p.thousandsSeparator)
 		}
 
 		cs2 = append(cs2, c)
