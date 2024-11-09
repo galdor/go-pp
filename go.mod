@@ -1,3 +1,3 @@
-module github.com/galdor/go-pp
+module go.n16f.net/pp
 
 go 1.23.2
