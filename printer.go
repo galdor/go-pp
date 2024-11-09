@@ -24,15 +24,17 @@ const (
 )
 
 var (
-	DefaultMaxColumn = 80
-	DefaultIndent    = "  "
+	DefaultMaxColumn          = 80
+	DefaultIndent             = "  "
+	DefaultThousandsSeparator = '_'
 )
 
 type Printer struct {
-	MaxColumn  int
-	Indent     string
-	LinePrefix string
-	PrintTypes PrintTypes
+	MaxColumn          int
+	Indent             string
+	LinePrefix         string
+	PrintTypes         PrintTypes
+	ThousandsSeparator rune
 
 	level int
 
@@ -83,6 +85,10 @@ func (p *Printer) reset(value any) {
 
 	if p.PrintTypes == "" {
 		p.PrintTypes = PrintTypesDefault
+	}
+
+	if p.ThousandsSeparator == 0 {
+		p.ThousandsSeparator = DefaultThousandsSeparator
 	}
 
 	p.buf = nil
@@ -298,7 +304,12 @@ func (p *Printer) printIntegerValue(v reflect.Value) {
 
 	i := v.Int()
 	s := strconv.FormatInt(i, 10)
-	p.printString(s)
+
+	if p.ThousandsSeparator == 0 {
+		p.printString(s)
+	} else {
+		p.printString(p.addThousandsSeparator(s))
+	}
 
 	if p.PrintTypes == PrintTypesAlways {
 		p.printByte(')')
@@ -313,7 +324,12 @@ func (p *Printer) printUnsignedIntegerValue(v reflect.Value) {
 
 	u := v.Uint()
 	s := strconv.FormatUint(u, 10)
-	p.printString(s)
+
+	if p.ThousandsSeparator == 0 {
+		p.printString(s)
+	} else {
+		p.printString(p.addThousandsSeparator(s))
+	}
 
 	if p.PrintTypes == PrintTypesAlways {
 		p.printByte(')')
@@ -328,7 +344,21 @@ func (p *Printer) printFloatValue(v reflect.Value, bitSize int) {
 
 	f := v.Float()
 	s := strconv.FormatFloat(f, 'f', -1, bitSize)
-	p.printString(s)
+
+	is, fs, found := strings.Cut(s, ".")
+	if found {
+		if p.ThousandsSeparator == 0 {
+			p.printString(is)
+		} else {
+			p.printString(p.addThousandsSeparator(is))
+		}
+
+		p.printByte('.')
+
+		p.printString(fs)
+	} else {
+		p.printString(s)
+	}
 
 	if p.PrintTypes == PrintTypesAlways {
 		p.printByte(')')
@@ -752,6 +782,25 @@ func (p *Printer) valueTypeString(v reflect.Value) string {
 	s = strings.ReplaceAll(s, "interface {}", "any")
 
 	return s
+}
+
+func (p *Printer) addThousandsSeparator(s string) string {
+	cs2 := make([]rune, len(s))
+
+	cs := []rune(s)
+	slices.Reverse(cs)
+
+	for i, c := range cs {
+		if i > 0 && i%3 == 0 {
+			cs2 = append(cs2, p.ThousandsSeparator)
+		}
+
+		cs2 = append(cs2, c)
+	}
+
+	slices.Reverse(cs2)
+
+	return string(cs2)
 }
 
 func (p *Printer) inlinableValue(v reflect.Value) bool {
