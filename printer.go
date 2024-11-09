@@ -824,11 +824,23 @@ func (p *Printer) printPointerValue(v reflect.Value) {
 			}
 		}
 
-		if p.printTypes != PrintTypesNever {
-			p.printByte('&')
+		// The output for pointers to pointers can be confusing, so we print the
+		// type by default.
+		printType := p.printTypes == PrintTypesAlways ||
+			(v.Elem().Kind() == reflect.Pointer &&
+				p.printTypes != PrintTypesNever)
+
+		if printType {
+			p.printString(p.valueTypeString(v))
+			p.printByte('(')
 		}
 
+		p.printByte('&')
 		p.printValue(v.Elem())
+
+		if printType {
+			p.printByte(')')
+		}
 	}
 }
 
@@ -857,7 +869,7 @@ func (p *Printer) printTime(v reflect.Value, t *time.Time) {
 		p.printByte('(')
 	}
 
-	p.printString(t.Format(time.RFC3339))
+	p.printString(t.Format(time.RFC3339Nano))
 
 	if p.printTypes != PrintTypesNever {
 		p.printByte(')')
