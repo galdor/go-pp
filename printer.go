@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -205,7 +206,7 @@ func (p *Printer) printValue(value any) {
 		data := p2.buf
 		p.inline = false
 
-		if len(data) <= p.maxInlineColumn {
+		if utf8.RuneCount(data) <= p.maxInlineColumn {
 			p.printBytes(data)
 			return
 		}
