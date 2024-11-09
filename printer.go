@@ -319,40 +319,42 @@ func (p *Printer) printValue(value any) {
 
 	// Formatting function can return values which are themselves formattable.
 	// So we iterate until we get to a value we cannot format.
-	for v.Kind() != 0 {
-		if !v.CanInterface() || p.formatValue == nil {
-			break
-		}
-
-		var vs any
-		if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-			if !v.IsNil() {
-				vs = p.formatValue(v.Elem())
-			}
-		} else {
-			vs = p.formatValue(v)
-		}
-
-		if vs == nil {
-			break
-		}
-
-		if s, ok := vs.(RawString); ok {
-			if p.printTypes != PrintTypesNever {
-				p.printString(p.valueTypeString(v))
-				p.printByte('(')
+	if p.formatValue != nil {
+		for v.Kind() != 0 {
+			if !v.CanInterface() {
+				break
 			}
 
-			p.printValueString(v, string(s))
-
-			if p.printTypes != PrintTypesNever {
-				p.printByte(')')
+			var vs any
+			if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+				if !v.IsNil() {
+					vs = p.formatValue(v.Elem())
+				}
+			} else {
+				vs = p.formatValue(v)
 			}
-			return
-		}
 
-		v = reflect.ValueOf(vs)
-		printType = true
+			if vs == nil {
+				break
+			}
+
+			if s, ok := vs.(RawString); ok {
+				if p.printTypes != PrintTypesNever {
+					p.printString(p.valueTypeString(v))
+					p.printByte('(')
+				}
+
+				p.printValueString(v, string(s))
+
+				if p.printTypes != PrintTypesNever {
+					p.printByte(')')
+				}
+				return
+			}
+
+			v = reflect.ValueOf(vs)
+			printType = true
+		}
 	}
 
 	if printType {
