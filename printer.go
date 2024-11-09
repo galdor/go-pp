@@ -24,13 +24,13 @@ const (
 )
 
 var (
-	DefaultMaxColumn          = 80
+	DefaultMaxInlineColumn    = 80
 	DefaultIndent             = "  "
 	DefaultThousandsSeparator = '_'
 )
 
 type Printer struct {
-	MaxColumn          int
+	MaxInlineColumn    int
 	Indent             string
 	LinePrefix         string
 	PrintTypes         PrintTypes
@@ -42,6 +42,8 @@ type Printer struct {
 
 	buf    []byte
 	inline bool
+
+	maxInlineColumn int
 }
 
 type pointerRef struct {
@@ -75,8 +77,8 @@ func (p *Printer) clone() *Printer {
 }
 
 func (p *Printer) reset(value any) {
-	if p.MaxColumn == 0 {
-		p.MaxColumn = DefaultMaxColumn
+	if p.MaxInlineColumn == 0 {
+		p.MaxInlineColumn = DefaultMaxInlineColumn
 	}
 
 	if p.Indent == "" {
@@ -90,6 +92,8 @@ func (p *Printer) reset(value any) {
 	if p.ThousandsSeparator == 0 {
 		p.ThousandsSeparator = DefaultThousandsSeparator
 	}
+
+	p.maxInlineColumn = p.MaxInlineColumn - len(p.LinePrefix)
 
 	p.buf = nil
 
@@ -201,7 +205,7 @@ func (p *Printer) printValue(value any) {
 		data := p2.buf
 		p.inline = false
 
-		if len(data) <= p.MaxColumn-len(p.LinePrefix) {
+		if len(data) <= p.maxInlineColumn {
 			p.printBytes(data)
 			return
 		}
