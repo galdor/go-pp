@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"regexp"
 	"time"
+	"unicode/utf8"
 
 	"github.com/galdor/go-pp"
 )
@@ -26,10 +29,34 @@ type Complex struct {
 	Points []Point
 }
 
-func main() {
-	pp.Print(time.Now(), "now")
+var nbTitles = 0
 
-	// Cyclic pointers
+func printTitle(s string) {
+	if nbTitles > 0 {
+		fmt.Println()
+	}
+
+	fmt.Println(s)
+	for range utf8.RuneCountInString(s) {
+		fmt.Print("-")
+	}
+	fmt.Println()
+
+	nbTitles++
+}
+
+func main() {
+	// Standard types
+	printTitle("STANDARD TYPES")
+
+	pp.Print(map[string]any{
+		"timestamp": time.Now(),
+		"regexp":    regexp.MustCompile("^(?i)hell(o+)$"),
+	})
+
+	// Pointer handling
+	printTitle("REFERENCES")
+
 	foo1 := Foo{}
 	foo2 := Foo{Foo: &foo1}
 	bar := Bar{Foo: &foo2}
@@ -41,6 +68,8 @@ func main() {
 	pp.Print(&foo1)
 
 	// Inline content
+	printTitle("INLINE CONTENT")
+
 	pp.Print(Complex{
 		Points: []Point{
 			{1, -20, +300},

@@ -35,6 +35,7 @@ type Printer struct {
 	Indent             string
 	LinePrefix         string
 	PrintTypes         PrintTypes
+	HidePrivateFields  bool
 	ThousandsSeparator rune
 
 	level int
@@ -108,6 +109,8 @@ func (p *Printer) initPointers(v reflect.Value) {
 
 	var fn func(reflect.Value)
 	fn = func(v reflect.Value) {
+		vt := v.Type()
+
 		switch v.Kind() {
 		case reflect.Map, reflect.Slice, reflect.Struct, reflect.Pointer:
 		default:
@@ -141,7 +144,14 @@ func (p *Printer) initPointers(v reflect.Value) {
 
 		case reflect.Struct:
 			for i := range v.NumField() {
-				fn(v.Field(i))
+				fv := v.Field(i)
+				ft := vt.Field(i)
+
+				if !ft.IsExported() && p.HidePrivateFields {
+					return
+				}
+
+				fn(fv)
 			}
 
 		case reflect.Pointer:
@@ -650,6 +660,10 @@ func (p *Printer) printStructValue(v reflect.Value) {
 		for i := range n {
 			fv := v.Field(i)
 			ft := vt.Field(i)
+
+			if !ft.IsExported() && p.HidePrivateFields {
+				continue
+			}
 
 			if !p.inline {
 				p.printLineStart()
