@@ -32,10 +32,10 @@ const (
 
 var (
 	DefaultOutput             io.Writer = os.Stdout
+	DefaultFormatValueFunc              = FormatValue
 	DefaultMaxInlineColumn              = 80
 	DefaultIndent                       = "  "
 	DefaultThousandsSeparator           = '_'
-	DefaultFormatValueFunc              = FormatValue
 )
 
 type Printer struct {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"os"
 	"regexp"
 	"sync/atomic"
 	"time"
@@ -49,6 +50,11 @@ func printTitle(s string) {
 }
 
 func main() {
+	pp.Print(os.Args)
+
+	pp.Print(os.Args, "command line arguments")
+	return
+
 	pp.DefaultPrinter.SetLinePrefix("> ")
 
 	// Standard types
