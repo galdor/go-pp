@@ -63,7 +63,7 @@ func main() {
 		"float":     math.E,
 		"string":    "Hello world!\n",
 		"timestamp": time.Now(),
-		"duration":  3*time.Hour + 15*time.Minute + 42*time.Second,
+		"duration":  2*time.Hour + 15*time.Minute + 42250*time.Millisecond,
 		"regexp":    regexp.MustCompile("^(?i)hell(o+)$"),
 		"bignums": []any{
 			bi,
