@@ -9,10 +9,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 	"unsafe"
 )
+
+type ValueStringFunc func(reflect.Value) string
 
 type PrintTypes string
 
@@ -30,9 +31,11 @@ var (
 	DefaultMaxInlineColumn    = 80
 	DefaultIndent             = "  "
 	DefaultThousandsSeparator = '_'
+	DefaultValueStringFunc    = ValueString
 )
 
 type Printer struct {
+	valueString        ValueStringFunc
 	maxInlineColumn    int
 	indent             string
 	linePrefix         string
@@ -54,7 +57,13 @@ type pointerRef struct {
 	printed bool
 }
 
-func (p *Printer) SetMaxInlineColumnt(column int) {
+func (p *Printer) SetValueStringFunc(fn ValueStringFunc) {
+	p.mu.Lock()
+	p.valueString = fn
+	p.mu.Unlock()
+}
+
+func (p *Printer) SetMaxInlineColumn(column int) {
 	p.mu.Lock()
 	p.maxInlineColumn = column
 	p.mu.Unlock()
@@ -119,6 +128,7 @@ func (p *Printer) String(value any, label ...any) string {
 
 func (p *Printer) clone() *Printer {
 	p2 := Printer{
+		valueString:        p.valueString,
 		maxInlineColumn:    p.maxInlineColumn,
 		indent:             p.indent,
 		linePrefix:         p.linePrefix,
@@ -136,6 +146,10 @@ func (p *Printer) clone() *Printer {
 }
 
 func (p *Printer) reset(value any) {
+	if p.valueString == nil {
+		p.valueString = ValueString
+	}
+
 	if p.maxInlineColumn == 0 {
 		p.maxInlineColumn = DefaultMaxInlineColumn
 	}
@@ -282,13 +296,19 @@ func (p *Printer) printValue(value any) {
 	}
 
 	if v.CanInterface() {
-		switch vv := v.Interface().(type) {
-		case time.Time:
-			p.printTime(v, &vv)
-			return
-		case *time.Time:
-			if vv != nil {
-				p.printTime(v, vv)
+		if p.valueString != nil {
+			var s string
+
+			if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+				if !v.IsNil() {
+					s = p.valueString(v.Elem())
+				}
+			} else {
+				s = p.valueString(v)
+			}
+
+			if s != "" {
+				p.printValueString(v, s)
 				return
 			}
 		}
@@ -875,13 +895,13 @@ func (p *Printer) printUnknownValue(v reflect.Value) {
 	p.printFormat("%#v", v)
 }
 
-func (p *Printer) printTime(v reflect.Value, t *time.Time) {
+func (p *Printer) printValueString(v reflect.Value, s string) {
 	if p.printTypes != PrintTypesNever {
 		p.printString(p.valueTypeString(v))
 		p.printByte('(')
 	}
 
-	p.printString(t.Format(time.RFC3339Nano))
+	p.printString(s)
 
 	if p.printTypes != PrintTypesNever {
 		p.printByte(')')
