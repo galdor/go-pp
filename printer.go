@@ -220,6 +220,10 @@ func (p *Printer) pointerAnnotation(ptr uintptr) (bool, string) {
 	return false, "#" + strconv.Itoa(ref.n) + "#"
 }
 
+func (p *Printer) currentMaxInlineColumn() int {
+	return p.maxInlineColumn - len(p.linePrefix) - p.level*len(p.indent)
+}
+
 func (p *Printer) maybePrintLabel(label ...any) {
 	if len(label) > 0 {
 		format, ok := label[0].(string)
@@ -258,7 +262,7 @@ func (p *Printer) printValue(value any) {
 		data := p2.buf
 		p.inline = false
 
-		if utf8.RuneCount(data) <= p.maxInlineColumn {
+		if utf8.RuneCount(data) <= p.currentMaxInlineColumn() {
 			p.printBytes(data)
 			return
 		}
