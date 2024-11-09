@@ -6,29 +6,29 @@ import (
 	"time"
 )
 
-func ValueString(v reflect.Value) string {
+func FormatValue(v reflect.Value) string {
 	switch vv := v.Interface().(type) {
 	case regexp.Regexp:
-		return RegexpValueString(&vv)
+		return FormatRegexp(&vv)
 
 	case time.Duration:
-		return DurationValueString(vv)
+		return FormatDuration(vv)
 
 	case time.Time:
-		return TimeValueString(vv)
+		return FormatTime(vv)
 	}
 
 	return ""
 }
 
-func RegexpValueString(re *regexp.Regexp) string {
+func FormatRegexp(re *regexp.Regexp) string {
 	return "/" + re.String() + "/"
 }
 
-func DurationValueString(d time.Duration) string {
+func FormatDuration(d time.Duration) string {
 	return d.String()
 }
 
-func TimeValueString(t time.Time) string {
+func FormatTime(t time.Time) string {
 	return t.Format(time.RFC3339Nano)
 }

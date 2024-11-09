@@ -13,7 +13,7 @@ import (
 	"unsafe"
 )
 
-type ValueStringFunc func(reflect.Value) string
+type FormatValueFunc func(reflect.Value) string
 
 type PrintTypes string
 
@@ -31,11 +31,11 @@ var (
 	DefaultMaxInlineColumn    = 80
 	DefaultIndent             = "  "
 	DefaultThousandsSeparator = '_'
-	DefaultValueStringFunc    = ValueString
+	DefaultFormatValueFunc    = FormatValue
 )
 
 type Printer struct {
-	valueString        ValueStringFunc
+	formatValue        FormatValueFunc
 	maxInlineColumn    int
 	indent             string
 	linePrefix         string
@@ -57,9 +57,9 @@ type pointerRef struct {
 	printed bool
 }
 
-func (p *Printer) SetValueStringFunc(fn ValueStringFunc) {
+func (p *Printer) SetFormatValueFunc(fn FormatValueFunc) {
 	p.mu.Lock()
-	p.valueString = fn
+	p.formatValue = fn
 	p.mu.Unlock()
 }
 
@@ -128,7 +128,7 @@ func (p *Printer) String(value any, label ...any) string {
 
 func (p *Printer) clone() *Printer {
 	p2 := Printer{
-		valueString:        p.valueString,
+		formatValue:        p.formatValue,
 		maxInlineColumn:    p.maxInlineColumn,
 		indent:             p.indent,
 		linePrefix:         p.linePrefix,
@@ -146,8 +146,8 @@ func (p *Printer) clone() *Printer {
 }
 
 func (p *Printer) reset(value any) {
-	if p.valueString == nil {
-		p.valueString = ValueString
+	if p.formatValue == nil {
+		p.formatValue = FormatValue
 	}
 
 	if p.maxInlineColumn == 0 {
@@ -296,15 +296,15 @@ func (p *Printer) printValue(value any) {
 	}
 
 	if v.CanInterface() {
-		if p.valueString != nil {
+		if p.formatValue != nil {
 			var s string
 
 			if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 				if !v.IsNil() {
-					s = p.valueString(v.Elem())
+					s = p.formatValue(v.Elem())
 				}
 			} else {
-				s = p.valueString(v)
+				s = p.formatValue(v)
 			}
 
 			if s != "" {
