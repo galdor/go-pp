@@ -831,20 +831,12 @@ func (p *Printer) printTypeForValue(v reflect.Value) bool {
 		return true
 
 	case PrintTypesDefault:
-		kinds := []reflect.Kind{
-			reflect.Slice,
-			reflect.Array,
-			reflect.Map,
-			reflect.Struct,
-			reflect.Chan,
-			reflect.Func,
-			reflect.Interface,
-		}
-		if slices.Contains(kinds, v.Kind()) {
+		switch v.Kind() {
+		case reflect.Struct, reflect.Chan, reflect.Func, reflect.Interface:
 			return true
-		}
-
-		if v.Kind() == reflect.Pointer {
+		case reflect.Array, reflect.Slice:
+			return true
+		case reflect.Pointer:
 			return v.IsNil() ||
 				v.Elem().Kind() == reflect.Pointer ||
 				v.Elem().Kind() == reflect.Interface
