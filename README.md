@@ -15,7 +15,7 @@ Example:
 info, _ := os.Stat("/dev/stdout")
 p.Print(info, "standard output")
 ```
-![Output example](misc/output.png)
+![Output example](misc/standard-output.png)
 
 Debugging is hard. The `pp` package makes it easier.
 
