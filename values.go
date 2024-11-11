@@ -6,9 +6,15 @@ import (
 	"regexp"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 func FormatValue(v reflect.Value) any {
+	// If the value is a non-exported variable or field, we will not be able to
+	// call Interface() on it. Using the unsafe package allows us to work around
+	// it.
+	v = reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
+
 	switch vv := v.Interface().(type) {
 	case atomic.Bool:
 		return vv.Load()

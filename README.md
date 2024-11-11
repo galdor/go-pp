@@ -13,7 +13,7 @@ possible, various standard types have a custom representation.
 Example:
 ```go
 info, _ := os.Stat("/dev/stdout")
-p.Print(info, "stdout info")
+p.Print(info, "standard output")
 ```
 ![Output example](misc/output.png)
 
@@ -81,10 +81,6 @@ which can be either:
 - any other value to be formatted by the printer.
 
 Printers will only call this function on values, not pointers.
-
-Note that formatting functions are never called on non-exported (private) values
-due to Go's limitations (the dreaded "reflect.Value.Interface: cannot return
-value obtained from unexported field or method").
 
 The default function, `pp.FormatValue` handles various standard types such as
 `time.Time` or `regexp.Regexp`.

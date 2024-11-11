@@ -336,10 +336,6 @@ func (p *Printer) printValue(value any) {
 	// So we iterate until we get to a value we cannot format.
 	if p.formatValue != nil {
 		for v.Kind() != 0 {
-			if !v.CanInterface() {
-				break
-			}
-
 			var vs any
 			if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 				if !v.IsNil() {
