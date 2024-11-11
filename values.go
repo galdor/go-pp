@@ -12,8 +12,17 @@ import (
 func FormatValue(v reflect.Value) any {
 	// If the value is a non-exported variable or field, we will not be able to
 	// call Interface() on it. Using the unsafe package allows us to work around
-	// it.
-	v = reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
+	// it. Of course if the value is not addressable and we still cannot call
+	// Interface(), we cannot go any further and fall back to default
+	// formatting.
+
+	if v.CanAddr() {
+		v = reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem()
+	}
+
+	if !v.CanInterface() {
+		return nil
+	}
 
 	switch vv := v.Interface().(type) {
 	case atomic.Bool:
